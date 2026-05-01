@@ -34,7 +34,7 @@
    ============================================================ */
 html {
   -webkit-text-size-adjust: 100%;
-  overflow-x: hidden !important;
+  overflow-x: clip;
   width: 100%;
   max-width: 100%;
   margin: 0;
@@ -49,19 +49,20 @@ body {
   max-width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
-  overflow-x: hidden !important;
+  overflow-x: hidden;
   margin: 0;
   padding: 0;
   position: relative;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
+  touch-action: pan-y;
 }
 
 #app {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
   position: relative;
 }
 
@@ -70,6 +71,7 @@ body {
   max-width: 100%;
   overflow-x: hidden;
   padding: 0 0 calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 16px);
+  box-sizing: border-box;
 }
 
 /* Всички flex/grid children трябва да могат да се свиват */
