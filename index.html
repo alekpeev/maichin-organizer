@@ -1043,6 +1043,21 @@ var google = {
     }, {
       get: function(target, prop) {
         if (prop in target) return target[prop];
+        if (prop === 'uploadPhoto') {
+          return function(base64, fileName, mimeType) {
+            var onSuccess = _pendingSuccess;
+            var onFailure = _pendingFailure;
+            _pendingSuccess = null;
+            _pendingFailure = null;
+            uploadDirectToDrive(base64, fileName, mimeType, function(result) {
+              if (result.success) { if (onSuccess) onSuccess(result); }
+              else {
+                if (onFailure) onFailure({ message: result.error });
+                else showToast('⚠️ ' + result.error);
+              }
+            });
+          };
+        }
         return function() {
           var onSuccess = _pendingSuccess;
           var onFailure = _pendingFailure;
@@ -1080,6 +1095,86 @@ function recheckAuth() {
 }
 function requestPermissionsViaPopup() {
   showToast('⚠️ Презареди страницата и влез наново.');
+}
+
+// ================================================================
+// КАЧВАНЕ НА СНИМКИ ДИРЕКТНО В GOOGLE DRIVE (Drive API v3)
+// Заобикаля JSONP ограничението за размер на URL
+// ================================================================
+var _driveTokenClient = null;
+var _driveAccessToken = null;
+var _driveUploadQueue = null;
+
+var DRIVE_CLIENT_ID = '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com';
+
+function _initDriveClient(callback) {
+  if (_driveTokenClient) { callback(); return; }
+  _driveTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: DRIVE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    callback: function(resp) {
+      if (resp.error) {
+        showToast('⚠️ Достъпът до Drive е отказан.');
+        _driveUploadQueue = null;
+        return;
+      }
+      _driveAccessToken = resp.access_token;
+      if (_driveUploadQueue) { _driveUploadQueue(); _driveUploadQueue = null; }
+    }
+  });
+  callback();
+}
+
+function uploadDirectToDrive(base64Data, fileName, mimeType, onDone) {
+  function doUpload(token) {
+    showToast('📷 Качвам в Google Drive...');
+    var bytes = Uint8Array.from(atob(base64Data), function(c) { return c.charCodeAt(0); });
+    var fileBlob = new Blob([bytes], { type: mimeType });
+    var meta = JSON.stringify({ name: fileName, mimeType: mimeType });
+    var form = new FormData();
+    form.append('metadata', new Blob([meta], { type: 'application/json' }));
+    form.append('file', fileBlob);
+
+    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: form
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Drive грешка ' + r.status);
+      return r.json();
+    })
+    .then(function(file) {
+      // Правим файла публично видим
+      return fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '/permissions', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'reader', type: 'anyone' })
+      }).then(function() {
+        var url = 'https://lh3.googleusercontent.com/d/' + file.id;
+        onDone({ success: true, url: url, fileId: file.id });
+      });
+    })
+    .catch(function(err) {
+      // Ако токенът е изтекъл — искаме нов
+      if (err.message.indexOf('401') !== -1 || err.message.indexOf('403') !== -1) {
+        _driveAccessToken = null;
+        _driveUploadQueue = function() { doUpload(_driveAccessToken); };
+        _driveTokenClient.requestAccessToken({ prompt: '' });
+      } else {
+        onDone({ success: false, error: err.message });
+      }
+    });
+  }
+
+  _initDriveClient(function() {
+    if (_driveAccessToken) {
+      doUpload(_driveAccessToken);
+    } else {
+      _driveUploadQueue = function() { doUpload(_driveAccessToken); };
+      _driveTokenClient.requestAccessToken({ prompt: '' });
+    }
+  });
 }
 
 </script>
