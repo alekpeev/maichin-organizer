@@ -219,6 +219,12 @@ function _routeAction(action, data, email) {
     case 'uploadPhoto':    return uploadPhoto(data.base64, data.fileName, data.mimeType);
     case 'getSpreadsheetUrl': return getSpreadsheetUrl();
     case 'deleteEntry':    return deleteEntry(data.sheetName, data.rowIndex);
+    case 'updateVaccineRecord': return updateVaccineRecord(data.name, data);
+    case 'deleteVaccineByName': return deleteVaccineByName(data.name);
+    case 'updateCheckupRecord': return updateCheckupRecord(data.name, data);
+    case 'deleteCheckupByName': return deleteCheckupByName(data.name);
+    case 'bulkMarkVaccinesDone': return bulkMarkVaccinesDone(data.items);
+    case 'bulkMarkCheckupsDone': return bulkMarkCheckupsDone(data.items);
     default:
       throw new Error('Непозната операция: ' + action);
   }
