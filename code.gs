@@ -47,11 +47,39 @@ const ADMIN_SHEET_ID = '1YtNB77H3DZ76Rlmo0TuPA9_j8qaW_QxTFGOitZ4tEXo';
 // WEB APP ENTRY POINTS
 // ============================================================
 
-/** GET — запазен за обратна съвместимост + ping проверка */
+/** GET — обработва JSONP заявки от GitHub Pages + ping */
 function doGet(e) {
+  // JSONP API заявка (заобикаля CORS)
+  if (e && e.parameter && e.parameter.callback) {
+    var cbName = e.parameter.callback;
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cbName)) {
+      return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    try {
+      var token  = e.parameter.token  || '';
+      var action = e.parameter.action || '';
+      var data   = JSON.parse(e.parameter.data || '{}');
+      if (!token)  throw new Error('Липсва токен.');
+      if (!action) throw new Error('Липсва action.');
+      var email  = _verifyIdToken(token);
+      var result = _routeAction(action, data, email);
+      if (action === 'init') _logAnalytics(email, data.country || '');
+      var json = JSON.stringify({ success: true, result: result });
+      return ContentService.createTextOutput(cbName + '(' + json + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    } catch (err) {
+      var json = JSON.stringify({ success: false, error: err.message });
+      return ContentService.createTextOutput(cbName + '(' + json + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+  }
+
+  // Ping проверка
   if (e && e.parameter && e.parameter.ping) {
     return _jsonResponse({ ok: true, v: 'v14-api' });
   }
+
+  // Стара HTML версия (обратна съвместимост)
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Майчин Органайзър')
