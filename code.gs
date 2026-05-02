@@ -38,45 +38,20 @@ const TEETH_SCHEDULE = [
 ];
 
 // ============================================================
-// WEB APP ENTRY POINT
+// API КОНФИГУРАЦИЯ (за GitHub Pages версията)
+// ============================================================
+const API_CLIENT_ID = '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com';
+const ADMIN_SHEET_ID = '1YtNB77H3DZ76Rlmo0TuPA9_j8qaW_QxTFGOitZ4tEXo';
+
+// ============================================================
+// WEB APP ENTRY POINTS
 // ============================================================
 
+/** GET — запазен за обратна съвместимост + ping проверка */
 function doGet(e) {
-  // ----- JSONP auth check -----
-  if (e && e.parameter && e.parameter.action === 'check_auth' && e.parameter.callback) {
-    var cbName = e.parameter.callback;
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cbName)) {
-      return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.JAVASCRIPT);
-    }
-    var email = '';
-    var hasFullAccess = false;
-    try {
-      email = Session.getActiveUser().getEmail() || '';
-      if (email) {
-        try {
-          var props = PropertiesService.getUserProperties();
-          var ssId = props.getProperty('SPREADSHEET_ID');
-          if (ssId) {
-            SpreadsheetApp.openById(ssId);
-            hasFullAccess = true;
-          } else {
-            DriveApp.getRootFolder();
-            hasFullAccess = true;
-          }
-        } catch (scopeErr) {
-          hasFullAccess = false;
-        }
-      }
-    } catch (err) { email = ''; }
-    var jsonData = JSON.stringify({ email: email, ok: !!email, hasAccess: hasFullAccess });
-    return ContentService
-      .createTextOutput(cbName + '(' + jsonData + ');')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  if (e && e.parameter && e.parameter.ping) {
+    return _jsonResponse({ ok: true, v: 'v14-api' });
   }
-
-  // ----- Нормално зареждане - връщаме приложението -----
-  // ВАЖНО v13: Apps Script е ЕДИНСТВЕНИЯТ източник на viewport tag.
-  // В Index.html viewport tag-ът е премахнат, за да няма дублиране.
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Майчин Органайзър')
@@ -84,8 +59,173 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/** POST — главен API endpoint за GitHub Pages приложението */
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var token = body.token;
+    var action = body.action;
+    var data = body.data || {};
+
+    if (!token) throw new Error('Липсва токен за автентикация.');
+    if (!action) throw new Error('Липсва action параметър.');
+
+    var email = _verifyIdToken(token);
+    var result = _routeAction(action, data, email);
+
+    if (action === 'init') {
+      _logAnalytics(email, data.country || '');
+    }
+
+    return _jsonResponse({ success: true, result: result });
+  } catch (err) {
+    return _jsonResponse({ success: false, error: err.message });
+  }
+}
+
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+// ============================================================
+// API ПОМОЩНИ ФУНКЦИИ
+// ============================================================
+
+/** Връща JSON отговор */
+function _jsonResponse(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/** Верифицира Google id_token и връща email на потребителя */
+function _verifyIdToken(token) {
+  try {
+    var url = 'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(token);
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var info = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200) throw new Error('Невалиден токен.');
+    if (!info.email) throw new Error('Токенът не съдържа email.');
+    if (info.aud !== API_CLIENT_ID) throw new Error('Токенът не е за това приложение.');
+    return info.email;
+  } catch (err) {
+    throw new Error('Грешка при верификация: ' + err.message);
+  }
+}
+
+/**
+ * Взима или създава таблицата на потребителя.
+ * Таблицата се създава в акаунта на разработчика и
+ * веднага се прехвърля в собственост на потребителя.
+ */
+function _getUserSpreadsheet(email) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'ss_' + email.replace(/[@.+]/g, '_');
+  var ssId = props.getProperty(key);
+
+  if (ssId) {
+    try {
+      return SpreadsheetApp.openById(ssId);
+    } catch (e) {
+      // Таблицата е изтрита или достъпът е премахнат — правим нова
+      props.deleteProperty(key);
+    }
+  }
+
+  // Нова потребителка — създаваме таблица
+  var ss = SpreadsheetApp.create('Майчин Органайзър — данни');
+  ssId = ss.getId();
+
+  // Прехвърляме собствеността на потребителката (данните са в НЕЙНИЯ Drive)
+  try {
+    DriveApp.getFileById(ssId).setOwner(email);
+  } catch (e) {
+    // Ако прехвърлянето не успее (напр. различен домейн), оставаме собственици
+    Logger.log('Ownership transfer failed for ' + email + ': ' + e.message);
+  }
+
+  _setupSheets(ss);
+  props.setProperty(key, ssId);
+
+  return ss;
+}
+
+/** Рутира API заявката към правилната функция */
+function _routeAction(action, data, email) {
+  // Задаваме таблицата на потребителя като активна за тази заявка
+  _ssCache = _getUserSpreadsheet(email);
+
+  switch (action) {
+    case 'init':           return { spreadsheetId: _ssCache.getId(), email: email };
+    case 'getProfile':     return getProfile();
+    case 'saveProfile':    return saveProfile(data);
+    case 'getDashboard':   return getDashboardData();
+    case 'getMilestones':  return getMilestones();
+    case 'addMilestone':   return addMilestone(data);
+    case 'getHealth':      return getHealth();
+    case 'markVaccineDone': return markVaccineDone(data);
+    case 'getAllergies':   return getAllergies();
+    case 'addAllergy':     return addAllergy(data);
+    case 'deleteAllergy':  return deleteAllergy(data.id);
+    case 'getCheckups':    return getCheckups();
+    case 'markCheckupDone': return markCheckupDone(data);
+    case 'addManualCheckup': return addManualCheckup(data);
+    case 'getIllnesses':   return getIllnesses();
+    case 'addIllness':     return addIllness(data);
+    case 'updateIllness':  return updateIllness(data.id, data);
+    case 'deleteIllness':  return deleteIllness(data.id);
+    case 'getTeeth':       return getTeeth();
+    case 'saveTooth':      return saveTooth(data);
+    case 'getGrowth':      return getGrowth();
+    case 'addGrowthEntry': return addGrowthEntry(data);
+    case 'getMemories':    return getMemories();
+    case 'addMemory':      return addMemory(data);
+    case 'getFeeding':     return getFeeding();
+    case 'addFeedingEntry': return addFeedingEntry(data);
+    case 'getDoctors':     return getDoctors();
+    case 'addDoctor':      return addDoctor(data);
+    case 'getNotes':       return getNotes();
+    case 'addNote':        return addNote(data);
+    case 'toggleNoteDone': return toggleNoteDone(data.id);
+    case 'deleteNote':     return deleteNote(data.id);
+    case 'uploadPhoto':    return uploadPhoto(data.base64, data.fileName, data.mimeType);
+    case 'getSpreadsheetUrl': return getSpreadsheetUrl();
+    case 'deleteEntry':    return deleteEntry(data.sheetName, data.rowIndex);
+    default:
+      throw new Error('Непозната операция: ' + action);
+  }
+}
+
+/** Записва активността на потребителя в Admin Sheet за аналитика */
+function _logAnalytics(email, country) {
+  try {
+    var ss = SpreadsheetApp.openById(ADMIN_SHEET_ID);
+    var sheet = ss.getSheets()[0];
+    var now = new Date();
+
+    if (sheet.getLastRow() < 2) {
+      var data = [];
+    } else {
+      var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+    }
+
+    var userRow = -1;
+    for (var i = 0; i < data.length; i++) {
+      if (data[i][0] === email) { userRow = i + 2; break; }
+    }
+
+    if (userRow === -1) {
+      // Нова потребителка
+      sheet.appendRow([email, now, now, 1, country || 'Неизвестна']);
+    } else {
+      // Съществуваща — обновяваме последно влизане и брой
+      sheet.getRange(userRow, 3).setValue(now);
+      sheet.getRange(userRow, 4).setValue((data[userRow - 2][3] || 0) + 1);
+    }
+  } catch (e) {
+    // Аналитиката не трябва да спира нормалната работа
+    Logger.log('Analytics error: ' + e.message);
+  }
 }
 
 // ============================================================
