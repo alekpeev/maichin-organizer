@@ -1125,45 +1125,77 @@ function _initDriveClient(callback) {
   callback();
 }
 
+var _driveFolderId = null;
+
+function _getOrCreateFolder(token, callback) {
+  if (_driveFolderId) { callback(_driveFolderId); return; }
+  // Търсим дали папката вече съществува
+  fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'Майчин Органайзър' and mimeType%3D'application/vnd.google-apps.folder' and trashed%3Dfalse&fields=files(id)", {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.files && res.files.length > 0) {
+      _driveFolderId = res.files[0].id;
+      callback(_driveFolderId);
+    } else {
+      // Създаваме папката
+      return fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Майчин Органайзър', mimeType: 'application/vnd.google-apps.folder' })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(folder) {
+        _driveFolderId = folder.id;
+        callback(_driveFolderId);
+      });
+    }
+  })
+  .catch(function() { callback(null); });
+}
+
 function uploadDirectToDrive(base64Data, fileName, mimeType, onDone) {
   function doUpload(token) {
     showToast('📷 Качвам в Google Drive...');
-    var bytes = Uint8Array.from(atob(base64Data), function(c) { return c.charCodeAt(0); });
-    var fileBlob = new Blob([bytes], { type: mimeType });
-    var meta = JSON.stringify({ name: fileName, mimeType: mimeType });
-    var form = new FormData();
-    form.append('metadata', new Blob([meta], { type: 'application/json' }));
-    form.append('file', fileBlob);
+    _getOrCreateFolder(token, function(folderId) {
+      var bytes = Uint8Array.from(atob(base64Data), function(c) { return c.charCodeAt(0); });
+      var fileBlob = new Blob([bytes], { type: mimeType });
+      var metaObj = { name: fileName, mimeType: mimeType };
+      if (folderId) metaObj.parents = [folderId];
+      var form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metaObj)], { type: 'application/json' }));
+      form.append('file', fileBlob);
 
-    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token },
-      body: form
-    })
-    .then(function(r) {
-      if (!r.ok) throw new Error('Drive грешка ' + r.status);
-      return r.json();
-    })
-    .then(function(file) {
-      // Правим файла публично видим
-      return fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '/permissions', {
+      fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'reader', type: 'anyone' })
-      }).then(function() {
-        var url = 'https://lh3.googleusercontent.com/d/' + file.id;
-        onDone({ success: true, url: url, fileId: file.id });
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: form
+      })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Drive грешка ' + r.status);
+        return r.json();
+      })
+      .then(function(file) {
+        return fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '/permissions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'reader', type: 'anyone' })
+        }).then(function() {
+          var url = 'https://lh3.googleusercontent.com/d/' + file.id;
+          onDone({ success: true, url: url, fileId: file.id });
+        });
+      })
+      .catch(function(err) {
+        if (err.message.indexOf('401') !== -1 || err.message.indexOf('403') !== -1) {
+          _driveAccessToken = null;
+          _driveFolderId = null;
+          _driveUploadQueue = function() { doUpload(_driveAccessToken); };
+          _driveTokenClient.requestAccessToken({ prompt: '' });
+        } else {
+          onDone({ success: false, error: err.message });
+        }
       });
-    })
-    .catch(function(err) {
-      // Ако токенът е изтекъл — искаме нов
-      if (err.message.indexOf('401') !== -1 || err.message.indexOf('403') !== -1) {
-        _driveAccessToken = null;
-        _driveUploadQueue = function() { doUpload(_driveAccessToken); };
-        _driveTokenClient.requestAccessToken({ prompt: '' });
-      } else {
-        onDone({ success: false, error: err.message });
-      }
     });
   }
 
