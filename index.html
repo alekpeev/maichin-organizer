@@ -53,8 +53,8 @@
       <div id="g_id_onload"
         data-client_id="488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com"
         data-callback="handleLogin"
-        data-auto_select="true"
-        data-auto_prompt="true">
+        data-auto_select="false"
+        data-auto_prompt="false">
       </div>
       <div class="g_id_signin"
         data-type="standard"
@@ -135,30 +135,11 @@
       return JSON.parse(atob(base64));
     }
 
-    // При зареждане: проверяваме дали имаме запазен токен
-    (function checkSavedSession() {
-      var token = localStorage.getItem('id_token');
-      var exp = localStorage.getItem('token_exp');
-      var name = localStorage.getItem('user_name');
-      // id_token изтича след 1 час — GIS auto_select ще го обнови автоматично
-      if (token && exp && Date.now() / 1000 < parseInt(exp)) {
-        showStatus('loading', '⏳ Влизаме автоматично...');
-        callApi('init', {})
-          .then(function(result) {
-            var email = localStorage.getItem('user_email') || '';
-            showStatus('success',
-              '<div class="user-name">👋 ' + (name || email) + '</div>' +
-              '<div class="user-email">' + email + '</div>' +
-              '<span class="badge badge-green">✅ Данните са свързани</span>'
-            );
-          })
-          .catch(function() {
-            // Токенът е изтекъл — GIS ще покаже бутона за вход
-            localStorage.removeItem('id_token');
-            document.getElementById('status-box').style.display = 'none';
-          });
-      }
-    })();
+    // Изчистваме всички стари запазени токени за чист старт
+    localStorage.removeItem('id_token');
+    localStorage.removeItem('token_exp');
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('user_name');
   </script>
 </body>
 </html>
