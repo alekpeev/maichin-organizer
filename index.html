@@ -1364,19 +1364,14 @@ function renderDashboard(data) {
 
   var heroPhoto = document.getElementById('heroBabyPhoto');
   if (heroPhoto) {
+    var localPhoto = localStorage.getItem('maichin_profilePhoto');
     var photoUrl = (data.profile && data.profile['Снимка']) ? data.profile['Снимка'].trim() : '';
-    if (photoUrl && photoUrl.length > 5) {
+    var displayUrl = localPhoto || photoUrl;
+    if (displayUrl && displayUrl.length > 5) {
       var img = document.createElement('img');
       img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
-      img.onerror = function() {
-        // Ако drive.google.com/uc не зареди, опитваме lh3
-        if (img.src.indexOf('drive.google.com') !== -1) {
-          var fid = photoUrl.split('id=')[1];
-          if (fid) { img.src = 'https://lh3.googleusercontent.com/d/' + fid; return; }
-        }
-        heroPhoto.innerHTML = '🍼';
-      };
-      img.src = photoUrl;
+      img.onerror = function() { heroPhoto.innerHTML = '🍼'; };
+      img.src = displayUrl;
       heroPhoto.innerHTML = '';
       heroPhoto.appendChild(img);
     }
@@ -1859,7 +1854,7 @@ function saveProfileForm(){
   else{doSave(photoVal);}
 }
 function triggerProfilePhoto(){document.getElementById('profilePhotoFile').click();}
-function handleProfilePhoto(ev){var file=ev.target.files[0];if(!file||!file.type.startsWith('image/'))return;compressImage(file,function(b64,mime){pendingPhotoData={fieldId:'profilePhoto',base64:b64,fileName:'profile_'+Date.now()+'.jpg',mimeType:mime};var img=document.getElementById('profilePhotoImg');img.src='data:'+mime+';base64,'+b64;img.style.display='block';document.getElementById('profilePhotoPlaceholder').style.display='none';});}
+function handleProfilePhoto(ev){var file=ev.target.files[0];if(!file||!file.type.startsWith('image/'))return;compressImage(file,function(b64,mime){var dataUrl='data:'+mime+';base64,'+b64;pendingPhotoData={fieldId:'profilePhoto',base64:b64,fileName:'profile_'+Date.now()+'.jpg',mimeType:mime};localStorage.setItem('maichin_profilePhoto',dataUrl);var img=document.getElementById('profilePhotoImg');img.src=dataUrl;img.style.display='block';document.getElementById('profilePhotoPlaceholder').style.display='none';});}
 
 function getFormHTML(type){
   var t=today();
