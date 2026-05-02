@@ -1049,13 +1049,14 @@ var google = {
             var onFailure = _pendingFailure;
             _pendingSuccess = null;
             _pendingFailure = null;
+            var sub = fileName && fileName.indexOf('profile_') === 0 ? '👶 Профил' : '📸 Спомени';
             uploadDirectToDrive(base64, fileName, mimeType, function(result) {
               if (result.success) { if (onSuccess) onSuccess(result); }
               else {
                 if (onFailure) onFailure({ message: result.error });
                 else showToast('⚠️ ' + result.error);
               }
-            });
+            }, sub);
           };
         }
         return function() {
@@ -1125,40 +1126,53 @@ function _initDriveClient(callback) {
   callback();
 }
 
-var _driveFolderId = null;
+// Запазваме folder ID-та в localStorage — работи между сесии
+var _driveFolderId = localStorage.getItem('maichin_folderId') || null;
+var _driveSubfolders = {};
 
-function _getOrCreateFolder(token, callback) {
-  if (_driveFolderId) { callback(_driveFolderId); return; }
-  // Търсим дали папката вече съществува
-  fetch("https://www.googleapis.com/drive/v3/files?q=name%3D'Майчин Органайзър' and mimeType%3D'application/vnd.google-apps.folder' and trashed%3Dfalse&fields=files(id)", {
-    headers: { 'Authorization': 'Bearer ' + token }
+function _createDriveFolder(token, name, parentId, cb) {
+  var body = { name: name, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) body.parents = [parentId];
+  fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
   })
   .then(function(r) { return r.json(); })
-  .then(function(res) {
-    if (res.files && res.files.length > 0) {
-      _driveFolderId = res.files[0].id;
-      callback(_driveFolderId);
-    } else {
-      // Създаваме папката
-      return fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Майчин Органайзър', mimeType: 'application/vnd.google-apps.folder' })
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(folder) {
-        _driveFolderId = folder.id;
-        callback(_driveFolderId);
-      });
-    }
-  })
-  .catch(function() { callback(null); });
+  .then(function(f) { cb(f && f.id ? f.id : null); })
+  .catch(function() { cb(null); });
 }
 
-function uploadDirectToDrive(base64Data, fileName, mimeType, onDone) {
+function _getOrCreateFolder(token, subfolderName, callback) {
+  function getSubfolder(parentId) {
+    if (!subfolderName) { callback(parentId); return; }
+    var cacheKey = subfolderName;
+    if (_driveSubfolders[cacheKey]) { callback(_driveSubfolders[cacheKey]); return; }
+    var stored = localStorage.getItem('maichin_sub_' + cacheKey);
+    if (stored) { _driveSubfolders[cacheKey] = stored; callback(stored); return; }
+    _createDriveFolder(token, subfolderName, parentId, function(subId) {
+      if (subId) {
+        _driveSubfolders[cacheKey] = subId;
+        localStorage.setItem('maichin_sub_' + cacheKey, subId);
+      }
+      callback(subId || parentId);
+    });
+  }
+
+  if (_driveFolderId) { getSubfolder(_driveFolderId); return; }
+  _createDriveFolder(token, 'Майчин Органайзър', null, function(folderId) {
+    if (folderId) {
+      _driveFolderId = folderId;
+      localStorage.setItem('maichin_folderId', folderId);
+    }
+    getSubfolder(folderId);
+  });
+}
+
+function uploadDirectToDrive(base64Data, fileName, mimeType, onDone, subfolder) {
   function doUpload(token) {
     showToast('📷 Качвам в Google Drive...');
-    _getOrCreateFolder(token, function(folderId) {
+    _getOrCreateFolder(token, subfolder || null, function(folderId) {
       var bytes = Uint8Array.from(atob(base64Data), function(c) { return c.charCodeAt(0); });
       var fileBlob = new Blob([bytes], { type: mimeType });
       var metaObj = { name: fileName, mimeType: mimeType };
@@ -1182,17 +1196,17 @@ function uploadDirectToDrive(base64Data, fileName, mimeType, onDone) {
           headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: 'reader', type: 'anyone' })
         }).then(function() {
-          var url = 'https://lh3.googleusercontent.com/d/' + file.id;
+          var url = 'https://drive.google.com/uc?export=view&id=' + file.id;
           onDone({ success: true, url: url, fileId: file.id });
         });
       })
       .catch(function(err) {
         if (err.message.indexOf('401') !== -1 || err.message.indexOf('403') !== -1) {
           _driveAccessToken = null;
-          _driveFolderId = null;
           _driveUploadQueue = function() { doUpload(_driveAccessToken); };
-          _driveTokenClient.requestAccessToken({ prompt: '' });
+          _driveTokenClient.requestAccessToken({ prompt: 'consent' });
         } else {
+          showToast('⚠️ Грешка при качване: ' + err.message);
           onDone({ success: false, error: err.message });
         }
       });
@@ -1203,6 +1217,7 @@ function uploadDirectToDrive(base64Data, fileName, mimeType, onDone) {
     if (_driveAccessToken) {
       doUpload(_driveAccessToken);
     } else {
+      showToast('🔐 Нужно разрешение за Google Drive...');
       _driveUploadQueue = function() { doUpload(_driveAccessToken); };
       _driveTokenClient.requestAccessToken({ prompt: '' });
     }
@@ -1350,7 +1365,21 @@ function renderDashboard(data) {
   var heroPhoto = document.getElementById('heroBabyPhoto');
   if (heroPhoto) {
     var photoUrl = (data.profile && data.profile['Снимка']) ? data.profile['Снимка'].trim() : '';
-    if (photoUrl && photoUrl.length > 5) { var img = document.createElement('img'); img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%'; img.onerror = function() { heroPhoto.innerHTML = '🍼'; }; img.src = photoUrl; heroPhoto.innerHTML = ''; heroPhoto.appendChild(img); }
+    if (photoUrl && photoUrl.length > 5) {
+      var img = document.createElement('img');
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+      img.onerror = function() {
+        // Ако drive.google.com/uc не зареди, опитваме lh3
+        if (img.src.indexOf('drive.google.com') !== -1) {
+          var fid = photoUrl.split('id=')[1];
+          if (fid) { img.src = 'https://lh3.googleusercontent.com/d/' + fid; return; }
+        }
+        heroPhoto.innerHTML = '🍼';
+      };
+      img.src = photoUrl;
+      heroPhoto.innerHTML = '';
+      heroPhoto.appendChild(img);
+    }
   }
 
   if (data.age) {
