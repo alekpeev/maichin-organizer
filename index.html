@@ -27,73 +27,34 @@
     .logo { font-size: 3rem; margin-bottom: 16px; }
     h1 { font-size: 1.5rem; color: #D4688A; margin-bottom: 8px; }
     .subtitle { color: #8A6B6B; font-size: 0.9rem; margin-bottom: 28px; line-height: 1.5; }
-
-    /* Центрираме Google бутона */
-    .signin-wrap {
-      display: flex;
-      justify-content: center;
-      margin-bottom: 16px;
-    }
-
-    #status-box {
-      display: none;
-      border-radius: 16px;
-      padding: 16px;
-      margin-top: 20px;
-      text-align: left;
-    }
-    #status-box.loading {
-      background: #FEF3DC;
-      color: #8A6B6B;
-      font-size: 0.85rem;
-      text-align: center;
-    }
-    #status-box.success {
-      background: #E3F5E8;
-    }
-    #status-box.error {
-      background: #FDE8E8;
-      color: #E85D5D;
-      font-size: 0.85rem;
-    }
+    .signin-wrap { display: flex; justify-content: center; margin-bottom: 16px; }
+    #status-box { display: none; border-radius: 16px; padding: 16px; margin-top: 16px; font-size: 0.85rem; }
+    #status-box.loading { background: #FEF3DC; color: #8A6B6B; text-align: center; }
+    #status-box.success { background: #E3F5E8; text-align: left; }
+    #status-box.error { background: #FDE8E8; color: #E85D5D; }
     .user-name { font-weight: 700; color: #3D2B2B; font-size: 1rem; margin-bottom: 4px; }
     .user-email { color: #8A6B6B; font-size: 0.8rem; margin-bottom: 12px; }
-    .access-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #5CB878;
-      color: white;
-      border-radius: 20px;
-      padding: 6px 12px;
-      font-size: 0.78rem;
-      font-weight: 600;
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 20px; padding: 6px 12px;
+      font-size: 0.78rem; font-weight: 600; margin: 4px 2px;
     }
-    .allow-btn {
-      width: 100%;
-      background: linear-gradient(135deg, #F2A7C3, #D4688A);
-      color: white;
-      border: none;
-      border-radius: 16px;
-      padding: 14px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 4px;
-    }
+    .badge-green { background: #5CB878; color: white; }
+    .badge-pink  { background: #F2A7C3; color: white; }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">👶</div>
     <h1>Майчин Органайзър</h1>
-    <p class="subtitle">Влез с твоя Google акаунт.<br>Данните ти ще се пазят в твоя Google Drive.</p>
+    <p class="subtitle">Влез с твоя Google акаунт.<br>Данните ти се пазят в твоя Google Drive.</p>
 
     <div class="signin-wrap">
       <div id="g_id_onload"
         data-client_id="488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com"
         data-callback="handleLogin"
-        data-auto_prompt="false">
+        data-auto_select="true"
+        data-auto_prompt="true">
       </div>
       <div class="g_id_signin"
         data-type="standard"
@@ -105,16 +66,6 @@
       </div>
     </div>
 
-    <!-- Показва се след Sign In, преди да е дал Drive достъп -->
-    <div id="allow-wrap" style="display:none; margin-top:16px;">
-      <p style="color:#8A6B6B; font-size:0.85rem; margin-bottom:12px;">
-        Влезе успешно! Сега разреши достъп до твоя Google Drive за да се пазят данните.
-      </p>
-      <button class="allow-btn" onclick="requestDriveAccess()">
-        🔓 Разреши достъп до Google Drive
-      </button>
-    </div>
-
     <div id="status-box">
       <div id="status-content"></div>
     </div>
@@ -122,83 +73,92 @@
 
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxA6Tls010wYReh060sKWv2wzGgYIRtwuHcKp-QJU-BsLIQ8L2C1ozKvlHeChpKE4_CYw/exec';
     const CLIENT_ID = '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com';
-    const SCOPES = [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive.file'
-    ].join(' ');
-
-    let tokenClient;
-    let currentUser = null;
-
-    /** Инициализира клиента за access token (Sheets + Drive достъп) */
-    function initTokenClient() {
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: handleTokenResponse
-      });
-    }
 
     /** Извиква се след успешен Google Sign-In */
     function handleLogin(response) {
-      currentUser = parseJwt(response.credential);
-      // Показваме бутона за разрешение (трябва директен клик за popup)
-      document.getElementById('allow-wrap').style.display = 'block';
+      var user = parseJwt(response.credential);
+
+      // Запазваме токена и данните на потребителя
+      localStorage.setItem('id_token', response.credential);
+      localStorage.setItem('token_exp', user.exp);
+      localStorage.setItem('user_email', user.email);
+      localStorage.setItem('user_name', user.name);
+      localStorage.setItem('user_picture', user.picture || '');
+
+      showStatus('loading', '⏳ Свързваме се с твоите данни...');
+
+      // Тестваме връзката с GAS
+      callApi('init', { country: navigator.language || '' })
+        .then(function(result) {
+          showStatus('success',
+            '<div class="user-name">👋 ' + user.name + '</div>' +
+            '<div class="user-email">' + user.email + '</div>' +
+            '<span class="badge badge-green">✅ Данните са свързани</span>' +
+            '<span class="badge badge-pink">🗂️ Google Drive активен</span>'
+          );
+          // TODO: Тук ще зареждаме главното приложение
+          console.log('Таблица ID:', result.spreadsheetId);
+        })
+        .catch(function(err) {
+          showStatus('error', '❌ Грешка при свързване: ' + err.message);
+        });
     }
 
-    /** Извиква се при директен клик — отваря Google popup за разрешение */
-    function requestDriveAccess() {
-      document.getElementById('allow-wrap').style.display = 'none';
-      showStatus('loading', '⏳ Отваря се Google прозорец за разрешение...');
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+    /** Изпраща заявка към GAS API */
+    function callApi(action, data) {
+      var token = localStorage.getItem('id_token');
+      return fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: action, token: token, data: data || {} }),
+        redirect: 'follow'
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        if (!json.success) throw new Error(json.error || 'Неизвестна грешка');
+        return json.result;
+      });
     }
 
-    /** Извиква се когато получим access token */
-    function handleTokenResponse(resp) {
-      if (resp.error) {
-        showStatus('error', 'Грешка: ' + resp.error + '. Моля опитай отново.');
-        return;
-      }
-
-      // Запазваме token в sessionStorage (изчиства се при затваряне на браузъра)
-      sessionStorage.setItem('access_token', resp.access_token);
-      sessionStorage.setItem('token_expires', Date.now() + (resp.expires_in * 1000));
-      sessionStorage.setItem('user_email', currentUser.email);
-      sessionStorage.setItem('user_name', currentUser.name);
-
-      showStatus('success', `
-        <div class="user-name">👋 ${currentUser.name}</div>
-        <div class="user-email">${currentUser.email}</div>
-        <div class="access-badge">✅ Достъпът до Google Drive е активен</div>
-      `);
-    }
-
-    /** Показва съобщение в status box */
+    /** Показва съобщение */
     function showStatus(type, html) {
-      const box = document.getElementById('status-box');
-      const content = document.getElementById('status-content');
+      var box = document.getElementById('status-box');
       box.className = type;
       box.style.display = 'block';
-      content.innerHTML = html;
+      document.getElementById('status-content').innerHTML = html;
     }
 
-    /** Декодира JWT токен (само за четене на данни, не за верификация) */
+    /** Декодира JWT (само за четене, верификацията е в GAS) */
     function parseJwt(token) {
-      const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      var base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
       return JSON.parse(atob(base64));
     }
 
-    // Инициализираме token client когато Google библиотеката се зареди
-    window.addEventListener('load', function() {
-      // Изчакваме Google библиотеката да е готова
-      const interval = setInterval(function() {
-        if (window.google && google.accounts) {
-          initTokenClient();
-          clearInterval(interval);
-        }
-      }, 100);
-    });
+    // При зареждане: проверяваме дали имаме запазен токен
+    (function checkSavedSession() {
+      var token = localStorage.getItem('id_token');
+      var exp = localStorage.getItem('token_exp');
+      var name = localStorage.getItem('user_name');
+      // id_token изтича след 1 час — GIS auto_select ще го обнови автоматично
+      if (token && exp && Date.now() / 1000 < parseInt(exp)) {
+        showStatus('loading', '⏳ Влизаме автоматично...');
+        callApi('init', {})
+          .then(function(result) {
+            var email = localStorage.getItem('user_email') || '';
+            showStatus('success',
+              '<div class="user-name">👋 ' + (name || email) + '</div>' +
+              '<div class="user-email">' + email + '</div>' +
+              '<span class="badge badge-green">✅ Данните са свързани</span>'
+            );
+          })
+          .catch(function() {
+            // Токенът е изтекъл — GIS ще покаже бутона за вход
+            localStorage.removeItem('id_token');
+            document.getElementById('status-box').style.display = 'none';
+          });
+      }
+    })();
   </script>
 </body>
 </html>
