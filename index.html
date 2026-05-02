@@ -2,467 +2,89 @@
 <html lang="bg">
 <head>
   <meta charset="UTF-8">
-  <!-- viewport tag се инжектира от doGet() в Код.gs - НЕ слагаме тук -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Майчин Органайзър">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#FDE8F0">
-  <meta name="application-name" content="Майчин Органайзър">
-  <!-- ВАЖНО v14: премахнати линковете към GitHub Pages иконите. -->
-  <!-- Те бяха остатък от iframe wrapper епохата и чупеха layout-а -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Майчин Органайзър</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <?!= include('Styles'); ?>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'DM Sans', sans-serif;
+      background: linear-gradient(160deg, #FDE8F0 0%, #FDF8F4 50%, #E0F5EF 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 24px;
+      padding: 40px 32px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(212,104,138,0.15);
+      max-width: 360px;
+      width: 100%;
+    }
+    .logo { font-size: 3rem; margin-bottom: 16px; }
+    h1 { font-size: 1.5rem; color: #D4688A; margin-bottom: 8px; }
+    p { color: #8A6B6B; font-size: 0.9rem; margin-bottom: 32px; line-height: 1.5; }
+    #user-info {
+      display: none;
+      background: #E0F5EF;
+      border-radius: 16px;
+      padding: 16px;
+      margin-top: 20px;
+    }
+    #user-info p { margin: 0; color: #3D2B2B; font-weight: 600; }
+    #user-info small { color: #8A6B6B; font-size: 0.8rem; }
+  </style>
 </head>
 <body>
+  <div class="card">
+    <div class="logo">👶</div>
+    <h1>Майчин Органайзър</h1>
+    <p>Влез с твоя Google акаунт за да продължиш</p>
 
-<!-- SPLASH SCREEN -->
-<div id="splash">
-  <div class="splash-content">
-    <div class="splash-logo"><img src="data:image/jpeg;base64,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" alt="Лого" width="100" height="100"></div>
-    <h1 class="splash-title">Майчин<br>Органайзър</h1>
-    <p class="splash-sub">Зарежда се...</p>
-    <div class="splash-dots"><span></span><span></span><span></span></div>
-  </div>
-</div>
-
-<!-- APP -->
-<div id="app" style="display:none">
-
-  <!-- TOP BAR -->
-  <header class="topbar">
-    <div class="topbar-left">
-      <img src="data:image/jpeg;base64,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" alt="Лого" class="app-logo-img">
-      <span class="app-title">Майчин Органайзър</span>
+    <div id="g_id_onload"
+      data-client_id="488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com"
+      data-callback="handleLogin"
+      data-auto_prompt="false">
     </div>
-    <div class="topbar-right">
-      <button class="profile-btn" onclick="showSection('profile')">
-        <span class="profile-btn-icon">👤</span>
-        <span class="profile-btn-text">Профил</span>
-      </button>
+    <div class="g_id_signin"
+      data-type="standard"
+      data-size="large"
+      data-theme="outline"
+      data-text="sign_in_with"
+      data-shape="rectangular"
+      data-logo_alignment="left">
     </div>
-  </header>
 
-  <!-- MAIN CONTENT -->
-  <main id="main-content">
-
-    <!-- ======== НАЧАЛО / DASHBOARD ======== -->
-    <section id="sec-dashboard" class="section active">
-
-      <!-- Hero карта -->
-      <div class="dashboard-hero">
-        <div class="hero-photo-wrap">
-          <div class="hero-photo" id="heroBabyPhoto">🍼</div>
-        </div>
-        <div class="hero-info">
-          <h2 id="dashName">Добре дошла!</h2>
-          <p id="dashAge" class="hero-age">Въведи данни в Профил</p>
-        </div>
-      </div>
-
-      <!-- 6 карти -->
-      <div class="cards-grid">
-        <div class="dash-card" id="cardNotes" onclick="showSection('notes')">
-          <span class="dash-card-icon">📝</span>
-          <span class="dash-card-title">Бележки</span>
-          <span class="dash-card-info" id="cardNotesInfo">—</span>
-        </div>
-        <div class="dash-card" id="cardUpcoming" onclick="showSection('health')">
-          <span class="dash-card-icon">📅</span>
-          <span class="dash-card-title">Предстоящо</span>
-          <span class="dash-card-info" id="cardUpcomingInfo">—</span>
-        </div>
-        <div class="dash-card" id="cardHealth" onclick="showSection('health')">
-          <span class="dash-card-icon">❤️</span>
-          <span class="dash-card-title">Здраве</span>
-          <span class="dash-card-info" id="cardHealthInfo">—</span>
-        </div>
-        <div class="dash-card" id="cardMemories" onclick="showSection('memories')">
-          <span class="dash-card-icon">📸</span>
-          <span class="dash-card-title">Спомени</span>
-          <span class="dash-card-info" id="cardMemoriesInfo">—</span>
-        </div>
-        <div class="dash-card" id="cardMilestones" onclick="showSection('milestones')">
-          <span class="dash-card-icon">⭐</span>
-          <span class="dash-card-title">Постижения</span>
-          <span class="dash-card-info" id="cardMilestonesInfo">—</span>
-        </div>
-        <div class="dash-card" id="cardGrowth" onclick="showSection('growth')">
-          <span class="dash-card-icon">📏</span>
-          <span class="dash-card-title">Растеж</span>
-          <span class="dash-card-info" id="cardGrowthInfo">—</span>
-        </div>
-      </div>
-
-    </section>
-
-    <!-- ======== МИЛЕСТОНИ ======== -->
-    <section id="sec-milestones" class="section">
-      <div class="section-header">
-        <h2>Постижения ⭐</h2>
-        <button class="add-btn" onclick="openModal('achievement')">+ Добави</button>
-      </div>
-      <div id="milestonesList" class="milestone-grid"></div>
-    </section>
-
-    <!-- ======== ЗДРАВЕ — 5 ТАБА ======== -->
-    <section id="sec-health" class="section">
-      <div class="section-header">
-        <h2>Здраве</h2>
-        <button class="emergency-header-btn" id="emergencyHeaderBtn" onclick="confirmEmergencyCall()" style="display:none">📞 Педиатър</button>
-      </div>
-
-      <!-- Табове на ДВА реда -->
-      <div class="health-tabs-grid">
-        <div class="health-tabs-row">
-          <button class="tab active" data-htab="vaccines" onclick="switchHealthTab('vaccines')">❤️ Ваксини</button>
-          <button class="tab" data-htab="allergies" onclick="switchHealthTab('allergies')">⚠️ Алергии</button>
-          <button class="tab" data-htab="checkups" onclick="switchHealthTab('checkups')">📋 Прегледи</button>
-        </div>
-        <div class="health-tabs-row">
-          <button class="tab" data-htab="illnesses" onclick="switchHealthTab('illnesses')">🤒 Боледуване</button>
-          <button class="tab" data-htab="teeth" onclick="switchHealthTab('teeth')">🦷 Зъби</button>
-        </div>
-      </div>
-
-      <!-- Таб: Ваксини -->
-      <div id="healthTab-vaccines" class="health-tab-content active">
-        <div class="tab-header-row">
-          <button class="add-btn" onclick="openModal('vaccine')">+ Добави ваксина</button>
-        </div>
-        <div id="vaccineList" class="vaccine-list"></div>
-      </div>
-
-      <!-- Таб: Алергии -->
-      <div id="healthTab-allergies" class="health-tab-content">
-        <div class="tab-header-row">
-          <button class="add-btn" onclick="openModal('allergy')">+ Добави алергия</button>
-        </div>
-        <div id="allergyList" class="allergy-list"></div>
-      </div>
-
-      <!-- Таб: Прегледи -->
-      <div id="healthTab-checkups" class="health-tab-content">
-        <div class="tab-header-row">
-          <button class="add-btn" onclick="openModal('checkup')">+ Добави преглед</button>
-        </div>
-        <div id="checkupList" class="checkup-list"></div>
-      </div>
-
-      <!-- Таб: Боледуване -->
-      <div id="healthTab-illnesses" class="health-tab-content">
-        <div class="tab-header-row">
-          <button class="add-btn" onclick="openModal('illness')">+ Добави заболяване</button>
-        </div>
-        <div id="illnessList" class="illness-list"></div>
-      </div>
-
-      <!-- Таб: Зъби -->
-      <div id="healthTab-teeth" class="health-tab-content">
-        <div id="teethView" class="teeth-view"></div>
-      </div>
-
-    </section>
-
-    <!-- ======== РАСТЕЖ ======== -->
-    <section id="sec-growth" class="section">
-      <div class="section-header">
-        <h2>Растеж 📏</h2>
-        <button class="add-btn" onclick="openModal('growth')">+ Добави</button>
-      </div>
-      <div id="growthList" class="growth-list"></div>
-    </section>
-
-    <!-- ======== СПОМЕНИ ======== -->
-    <section id="sec-memories" class="section">
-      <div class="section-header">
-        <h2>Спомени 📸</h2>
-        <button class="add-btn" onclick="openModal('memory')">+ Добави</button>
-      </div>
-      <div id="memoriesList" class="memories-grid"></div>
-    </section>
-
-    <!-- ======== БЪРЗИ БЕЛЕЖКИ ======== -->
-    <section id="sec-notes" class="section">
-      <div class="section-header">
-        <h2>Бележки 📝</h2>
-        <button class="add-btn" onclick="openQuickNote()">+ Добави</button>
-      </div>
-
-      <div class="quick-note-bar">
-        <input type="text" id="quickNoteInput" placeholder="Напиши бележка..." autocomplete="off">
-        <button class="quick-note-voice-btn" id="voiceBtn" onclick="toggleVoiceInput()" title="Гласов вход">🎤</button>
-        <button class="quick-note-send-btn" onclick="quickAddNote()">➤</button>
-      </div>
-      <div id="voiceStatus" class="voice-status" style="display:none"></div>
-
-      <div class="tabs" style="margin-top:12px">
-        <button class="tab active" data-tab="notes-active" onclick="switchNotesTab('active')">📌 Активни</button>
-        <button class="tab" data-tab="notes-done" onclick="switchNotesTab('done')">✅ Готови</button>
-      </div>
-
-      <div id="notesActiveList" class="notes-list"></div>
-      <div id="notesDoneList" class="notes-list" style="display:none"></div>
-    </section>
-
-    <!-- ======== ХРАНЕНЕ ======== -->
-    <section id="sec-feeding" class="section">
-      <div class="section-header">
-        <h2>Хранене 🥣</h2>
-        <button class="add-btn" onclick="openModal('feeding')">+ Добави</button>
-      </div>
-      <div id="feedingList" class="feeding-list"></div>
-    </section>
-
-    <!-- ======== ЛЕКАРИ ======== -->
-    <section id="sec-doctors" class="section">
-      <div class="section-header">
-        <h2>Лекари 👩‍⚕️</h2>
-        <button class="add-btn" onclick="openModal('doctor')">+ Добави</button>
-      </div>
-      <div id="doctorsList" class="doctors-list"></div>
-    </section>
-
-    <!-- ======== ПРОФИЛ ======== -->
-    <section id="sec-profile" class="section">
-      <div class="section-header">
-        <h2>Профил 🌸</h2>
-      </div>
-
-      <div class="profile-form">
-        <div class="form-group" style="text-align:center">
-          <div class="profile-photo-wrap" id="profilePhotoWrap" onclick="triggerProfilePhoto()">
-            <div class="profile-photo-circle" id="profilePhotoCircle">
-              <span id="profilePhotoPlaceholder">📷</span>
-              <img id="profilePhotoImg" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%">
-            </div>
-            <div class="profile-photo-label">Натисни за снимка</div>
-          </div>
-          <input type="file" id="profilePhotoFile" accept="image/*" style="display:none" onchange="handleProfilePhoto(event)">
-          <input type="hidden" id="pPhoto">
-        </div>
-
-        <div class="form-group">
-          <label for="pName">Име на бебето</label>
-          <input type="text" id="pName" placeholder="Мария..." autocomplete="off">
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="pBirth">Дата на раждане</label>
-            <input type="date" id="pBirth">
-          </div>
-          <div class="form-group">
-            <label for="pBirthTime">Час на раждане</label>
-            <input type="time" id="pBirthTime">
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="pGender">Пол</label>
-            <select id="pGender">
-              <option value="">— избери —</option>
-              <option value="Момиче">Момиче 👧</option>
-              <option value="Момче">Момче 👦</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="pBlood">Кръвна група</label>
-            <select id="pBlood">
-              <option value="">— избери —</option>
-              <option>A+</option><option>A-</option>
-              <option>B+</option><option>B-</option>
-              <option>AB+</option><option>AB-</option>
-              <option>O+</option><option>O-</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="pBirthWeight">Тегло при раждане (кг)</label>
-            <input type="number" id="pBirthWeight" step="0.01" placeholder="3.20" inputmode="decimal">
-          </div>
-          <div class="form-group">
-            <label for="pBirthHeight">Ръст при раждане (см)</label>
-            <input type="number" id="pBirthHeight" step="0.1" placeholder="50" inputmode="decimal">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="pHospital">Болница</label>
-          <input type="text" id="pHospital" placeholder="Майчин дом">
-        </div>
-
-        <div class="form-group">
-          <label for="pBirthDoctor">Доктор при раждане</label>
-          <input type="text" id="pBirthDoctor" placeholder="Д-р Иванова">
-        </div>
-
-        <div class="profile-section-title">👶 Педиатър</div>
-
-        <div class="form-group">
-          <label for="pPedName">Име на педиатъра</label>
-          <input type="text" id="pPedName" placeholder="Д-р Петрова">
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="pPedPhone">Телефон</label>
-            <input type="tel" id="pPedPhone" inputmode="tel" placeholder="0888 123 456">
-          </div>
-          <div class="form-group">
-            <label for="pPedPhone2">Втори телефон</label>
-            <input type="tel" id="pPedPhone2" inputmode="tel" placeholder="02 9876 543">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="pPedOffice">Адрес кабинет</label>
-          <input type="text" id="pPedOffice" placeholder="ДКЦ 2, ул. Здраве 5, ет. 3">
-        </div>
-
-        <div class="form-group">
-          <label for="pPedHours">Работно време</label>
-          <input type="text" id="pPedHours" placeholder="Пон-Пет 8-14, Четвъртък 14-18">
-        </div>
-
-        <div class="form-group">
-          <label for="pPedClinic">Поликлиника / втори кабинет</label>
-          <input type="text" id="pPedClinic" placeholder="МБАЛ Александровска, каб. 215">
-        </div>
-
-        <div class="profile-section-title">👨‍👩‍👧 Родители</div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="pMom">Име на майката</label>
-            <input type="text" id="pMom" placeholder="Ивана">
-          </div>
-          <div class="form-group">
-            <label for="pDad">Име на таткото</label>
-            <input type="text" id="pDad" placeholder="Георги">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="pNotes">Бележки</label>
-          <textarea id="pNotes" rows="2" placeholder="Допълнителна информация..."></textarea>
-        </div>
-
-        <button type="button" class="save-btn" onclick="saveProfileForm()">💾 Запази профила</button>
-      </div>
-
-      <div class="promo-card" style="margin-top:24px">
-        <div class="promo-icon">👶</div>
-        <div class="promo-text">
-          <div class="promo-title">Имаш още едно дете?</div>
-          <div class="promo-desc">Вземи Майчин Органайзър за второто дете с 50% отстъпка!</div>
-        </div>
-        <a href="#" id="secondChildBtn" class="promo-btn" target="_blank">Вземи с -50%</a>
-      </div>
-
-      <div class="promo-card" style="margin-top:12px">
-        <div class="promo-icon">💝</div>
-        <div class="promo-text">
-          <div class="promo-title">Хареса ти?</div>
-          <div class="promo-desc">Сподели с приятелка!</div>
-        </div>
-        <button class="promo-btn" onclick="shareApp()">Сподели 📲</button>
-      </div>
-
-      <div id="qrModal" class="modal-overlay" style="display:none">
-        <div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:30px">
-          <div class="modal-header">
-            <h3>Сподели с приятелка 💝</h3>
-            <button class="close-btn" onclick="document.getElementById('qrModal').style.display='none'">✕</button>
-          </div>
-          <canvas id="qrCanvas" style="margin:16px auto;display:block;max-width:100%;height:auto"></canvas>
-          <p style="color:var(--text-s);font-size:0.85rem;margin:12px 0">Сканирай QR кода или копирай линка:</p>
-          <div class="share-link-row">
-            <input type="text" id="shareLinkInput" readonly style="flex:1;min-width:0;border:1.5px solid var(--pink-l);border-radius:var(--r-s);padding:10px;font-size:0.8rem;font-family:DM Sans,sans-serif;overflow:hidden;text-overflow:ellipsis">
-            <button class="add-btn" onclick="copyShareLink()">Копирай</button>
-          </div>
-        </div>
-      </div>
-
-    </section>
-
-  </main>
-
-  <!-- ======== BOTTOM NAVIGATION ======== -->
-  <nav class="bottom-nav">
-    <button class="nav-btn active" onclick="showSection('dashboard')" data-section="dashboard">
-      <span class="nav-icon">🏠</span>
-      <span class="nav-label">Начало</span>
-    </button>
-    <button class="nav-btn" onclick="showSection('notes')" data-section="notes" style="position:relative">
-      <span class="nav-icon">📝</span>
-      <span class="nav-label">Бележки</span>
-      <span class="nav-badge" id="navNotesBadge" style="display:none"></span>
-    </button>
-    <button class="nav-btn" onclick="showSection('health')" data-section="health" style="position:relative">
-      <span class="nav-icon">❤️</span>
-      <span class="nav-label">Здраве</span>
-      <span class="nav-badge" id="navHealthBadge" style="display:none"></span>
-    </button>
-    <button class="nav-btn" onclick="showSection('memories')" data-section="memories">
-      <span class="nav-icon">📸</span>
-      <span class="nav-label">Спомени</span>
-    </button>
-    <button class="nav-btn" onclick="showSection('milestones')" data-section="milestones">
-      <span class="nav-icon">⭐</span>
-      <span class="nav-label">Постижения</span>
-    </button>
-  </nav>
-
-</div><!-- /app -->
-
-<!-- MODALS -->
-
-<div id="emergencyModal" class="modal-overlay" style="display:none">
-  <div class="modal" onclick="event.stopPropagation()" style="text-align:center;padding:30px">
-    <div class="modal-header">
-      <h3>📞 Обаждане на педиатъра</h3>
-      <button class="close-btn" onclick="document.getElementById('emergencyModal').style.display='none'">✕</button>
-    </div>
-    <p style="margin:16px 0;font-size:0.95rem">Искаш ли да се обадиш на:</p>
-    <div style="font-weight:700;font-size:1.1rem;margin:8px 0;word-break:break-word" id="emergencyConfirmName"></div>
-    <div style="font-size:1.3rem;color:var(--pink-d);font-weight:700;margin:8px 0;word-break:break-word" id="emergencyConfirmPhone"></div>
-    <div style="display:flex;gap:12px;margin-top:20px;justify-content:center;flex-wrap:wrap">
-      <button class="save-btn" style="background:var(--text-s);max-width:140px;width:auto" onclick="document.getElementById('emergencyModal').style.display='none'">Откажи</button>
-      <a id="emergencyCallLink" href="tel:" class="save-btn" style="max-width:140px;width:auto;text-decoration:none;text-align:center;display:block;background:linear-gradient(135deg,#E85D5D 0%,#c0392b 100%)">📞 Обади се</a>
+    <div id="user-info">
+      <p id="user-name"></p>
+      <small id="user-email"></small>
     </div>
   </div>
-</div>
 
-<div id="formModal" class="modal-overlay" style="display:none">
-  <div class="modal form-modal" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <h3 id="formModalTitle"></h3>
-      <button class="close-btn" onclick="closeModal('form')">✕</button>
-    </div>
-    <div id="formModalBody"></div>
-  </div>
-</div>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    /**
+     * Обработва успешния Google логин.
+     * credential е JWT токен с данните на потребителя.
+     */
+    function handleLogin(response) {
+      const payload = parseJwt(response.credential);
+      document.getElementById('user-name').textContent = '✅ ' + payload.name;
+      document.getElementById('user-email').textContent = payload.email;
+      document.getElementById('user-info').style.display = 'block';
+    }
 
-<div id="toothModal" class="modal-overlay" style="display:none">
-  <div class="modal form-modal" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <h3 id="toothModalTitle">🦷 Зъбче</h3>
-      <button class="close-btn" onclick="document.getElementById('toothModal').style.display='none'">✕</button>
-    </div>
-    <div id="toothModalBody"></div>
-  </div>
-</div>
-
-<div id="toast"></div>
-
-<?!= include('Scripts'); ?>
+    /**
+     * Декодира JWT токена без верификация (само за показване).
+     * Верификацията ще става на сървъра (GAS).
+     */
+    function parseJwt(token) {
+      const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(atob(base64));
+    }
+  </script>
 </body>
 </html>
