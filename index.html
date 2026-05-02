@@ -69,6 +69,18 @@
       font-size: 0.78rem;
       font-weight: 600;
     }
+    .allow-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #F2A7C3, #D4688A);
+      color: white;
+      border: none;
+      border-radius: 16px;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -91,6 +103,16 @@
         data-shape="rectangular"
         data-logo_alignment="left">
       </div>
+    </div>
+
+    <!-- Показва се след Sign In, преди да е дал Drive достъп -->
+    <div id="allow-wrap" style="display:none; margin-top:16px;">
+      <p style="color:#8A6B6B; font-size:0.85rem; margin-bottom:12px;">
+        Влезе успешно! Сега разреши достъп до твоя Google Drive за да се пазят данните.
+      </p>
+      <button class="allow-btn" onclick="requestDriveAccess()">
+        🔓 Разреши достъп до Google Drive
+      </button>
     </div>
 
     <div id="status-box">
@@ -121,12 +143,15 @@
     /** Извиква се след успешен Google Sign-In */
     function handleLogin(response) {
       currentUser = parseJwt(response.credential);
+      // Показваме бутона за разрешение (трябва директен клик за popup)
+      document.getElementById('allow-wrap').style.display = 'block';
+    }
 
-      showStatus('loading', '⏳ Искаме достъп до твоя Google Drive...');
-
-      // Искаме access token за Sheets и Drive
-      // prompt:'' означава — не питай отново ако вече е дал разрешение
-      tokenClient.requestAccessToken({ prompt: '' });
+    /** Извиква се при директен клик — отваря Google popup за разрешение */
+    function requestDriveAccess() {
+      document.getElementById('allow-wrap').style.display = 'none';
+      showStatus('loading', '⏳ Отваря се Google прозорец за разрешение...');
+      tokenClient.requestAccessToken({ prompt: 'consent' });
     }
 
     /** Извиква се когато получим access token */
