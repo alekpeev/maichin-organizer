@@ -87,7 +87,7 @@
   <script>
     const CLIENT_ID = '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com';
     const GAS_URL   = 'https://script.google.com/macros/s/AKfycbxA6Tls010wYReh060sKWv2wzGgYIRtwuHcKp-QJU-BsLIQ8L2C1ozKvlHeChpKE4_CYw/exec';
-    const REDIRECT  = 'https://alekpeev.github.io/maichin-organizer/';
+    const REDIRECT  = window.location.origin + window.location.pathname;
 
     /** Пренасочва потребителя към Google за вход */
     function signIn() {
