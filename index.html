@@ -797,6 +797,22 @@ img, input, select, textarea, canvas, svg, video, iframe {
     <!-- ---- ПРОФИЛ ---- -->
     <div class="section" id="sec-profile">
       <div class="section-header"><h2>Профил 👶</h2></div>
+
+      <!-- Профилна карта — показва запазените данни -->
+      <div id="profileCard" style="display:none;margin:0 0 20px;background:linear-gradient(135deg,#FDE8F0,#E8F7F3);border-radius:16px;padding:18px 16px;box-shadow:0 2px 8px rgba(212,104,138,0.1)">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+          <div id="profileCardPhoto" style="width:64px;height:64px;border-radius:50%;background:var(--pink-l);border:2px solid var(--pink);display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;overflow:hidden">👶</div>
+          <div>
+            <div id="profileCardName" style="font-family:Georgia,serif;font-size:1.2rem;font-weight:600;color:var(--text)"></div>
+            <div id="profileCardAge" style="font-size:0.85rem;color:var(--text-s);margin-top:2px"></div>
+          </div>
+        </div>
+        <div id="profileCardDetails" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.82rem"></div>
+        <button onclick="document.getElementById('profileCard').style.display='none';document.getElementById('profileEditForm').style.display='block'" style="margin-top:14px;width:100%;padding:9px;background:white;border:1.5px solid var(--pink);border-radius:10px;color:var(--pink);font-weight:600;font-size:0.9rem;cursor:pointer">✏️ Редактирай профила</button>
+        <a id="profileSheetsLink" href="#" target="_blank" style="display:block;margin-top:8px;text-align:center;color:var(--mint);font-size:0.82rem;font-weight:500;text-decoration:none">📊 Виж всички данни в Google Sheets →</a>
+      </div>
+
+      <div id="profileEditForm">
       <div class="profile-form">
         <div style="text-align:center">
           <div class="profile-photo-wrap" onclick="triggerProfilePhoto()">
@@ -847,6 +863,8 @@ img, input, select, textarea, canvas, svg, video, iframe {
         <div class="form-group"><label>Бележки</label><textarea id="pNotes" placeholder="Допълнителна информация..."></textarea></div>
 
         <button class="save-btn" onclick="saveProfileForm()">💾 Запази профила</button>
+      </div><!-- end profile-form -->
+      </div><!-- end profileEditForm -->
 
         <div class="profile-section-title" style="margin-top:24px">📤 Сподели приложението</div>
         <div class="promo-card">
@@ -857,8 +875,7 @@ img, input, select, textarea, canvas, svg, video, iframe {
           </div>
           <button class="promo-btn" onclick="shareApp()">🔗 Сподели</button>
         </div>
-      </div>
-    </div>
+    </div><!-- end sec-profile -->
 
   </div><!-- end #main-content -->
 
@@ -1842,8 +1859,53 @@ function loadProfile(){
     Object.keys(f).forEach(function(id){var el=document.getElementById(id);var val=d[f[id]];if(el&&val)el.value=(el.type==='date')?formatDateForInput(val):val;});
     if(!d['Педиатър име']&&d['Лекуващ педиатър']){var pn=document.getElementById('pPedName');if(pn&&!pn.value)pn.value=d['Лекуващ педиатър'];}
     var photoUrl=d['Снимка'];
-    if(photoUrl){document.getElementById('pPhoto').value=photoUrl;var img=document.getElementById('profilePhotoImg');img.src=photoUrl;img.style.display='block';document.getElementById('profilePhotoPlaceholder').style.display='none';}
+    var localPhoto=localStorage.getItem('maichin_profilePhoto');
+    var displayPhoto=localPhoto||photoUrl;
+    if(displayPhoto){document.getElementById('pPhoto').value=photoUrl||'';var img=document.getElementById('profilePhotoImg');img.src=displayPhoto;img.style.display='block';document.getElementById('profilePhotoPlaceholder').style.display='none';}
+    renderProfileCard(d, displayPhoto);
   }).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getProfile();
+}
+
+function renderProfileCard(d, photoSrc) {
+  var name = d['Име на бебето'];
+  if (!name) return;
+  var card = document.getElementById('profileCard');
+  var editForm = document.getElementById('profileEditForm');
+  // Снимка
+  var photoEl = document.getElementById('profileCardPhoto');
+  if (photoSrc) { photoEl.innerHTML = '<img src="'+photoSrc+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'; }
+  // Основни данни
+  document.getElementById('profileCardName').textContent = name;
+  var birth = d['Дата на раждане'];
+  var ageStr = '';
+  if (birth) {
+    try {
+      var bd = new Date(birth); var now = new Date(); var months = (now.getFullYear()-bd.getFullYear())*12+(now.getMonth()-bd.getMonth());
+      ageStr = months < 1 ? 'Новородено' : months < 24 ? months+' месеца' : Math.floor(months/12)+' год. '+months%12+' мес.';
+    } catch(e){}
+  }
+  document.getElementById('profileCardAge').textContent = ageStr || 'Въведи дата на раждане';
+  // Детайли
+  var details = [];
+  if (birth) details.push({icon:'🎂',label:'Роден/а',val:birth.split('-').reverse().join('.')});
+  if (d['Пол']) details.push({icon:'👶',label:'Пол',val:d['Пол']});
+  if (d['Кръвна група']) details.push({icon:'🩸',label:'Кръвна',val:d['Кръвна група']});
+  if (d['Тегло при раждане (кг)']) details.push({icon:'⚖️',label:'Тегло при раждане',val:d['Тегло при раждане (кг)']+' кг'});
+  if (d['Ръст при раждане (см)']) details.push({icon:'📏',label:'Ръст при раждане',val:d['Ръст при раждане (см)']+' см'});
+  if (d['Болница']) details.push({icon:'🏥',label:'Болница',val:d['Болница']});
+  if (d['Доктор при раждане']) details.push({icon:'👨‍⚕️',label:'Д-р при раждане',val:d['Доктор при раждане']});
+  if (d['Педиатър име']) details.push({icon:'🩺',label:'Педиатър',val:d['Педиатър име']+(d['Педиатър телефон']?' · '+d['Педиатър телефон']:'')});
+  if (d['Иtme на майката']) details.push({icon:'👩',label:'Мама',val:d['Иtme на майката']});
+  if (d['Иtme на таткото']) details.push({icon:'👨',label:'Тато',val:d['Иtme на таткото']});
+  document.getElementById('profileCardDetails').innerHTML = details.map(function(item){
+    return '<div style="background:rgba(255,255,255,0.7);border-radius:8px;padding:7px 10px"><div style="color:#aaa;font-size:0.72rem">'+item.icon+' '+item.label+'</div><div style="font-weight:600;color:var(--text);margin-top:2px">'+esc(item.val)+'</div></div>';
+  }).join('');
+  // Sheets линк
+  google.script.run.withSuccessHandler(function(r){
+    if(r&&r.url){var link=document.getElementById('profileSheetsLink');if(link)link.href=r.url;}
+  }).getSpreadsheetUrl();
+  card.style.display='block';
+  editForm.style.display='none';
 }
 
 function saveProfileForm(){
