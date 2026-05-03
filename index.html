@@ -809,7 +809,6 @@ img, input, select, textarea, canvas, svg, video, iframe {
         </div>
         <div id="profileCardDetails" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.82rem"></div>
         <button onclick="document.getElementById('profileCard').style.display='none';document.getElementById('profileEditForm').style.display='block'" style="margin-top:14px;width:100%;padding:9px;background:white;border:1.5px solid var(--pink);border-radius:10px;color:var(--pink);font-weight:600;font-size:0.9rem;cursor:pointer">✏️ Редактирай профила</button>
-        <a id="profileSheetsLink" href="#" target="_blank" style="display:block;margin-top:8px;text-align:center;color:var(--mint);font-size:0.82rem;font-weight:500;text-decoration:none">📊 Виж всички данни в Google Sheets →</a>
       </div>
 
       <div id="profileEditForm">
@@ -826,8 +825,8 @@ img, input, select, textarea, canvas, svg, video, iframe {
           <input type="hidden" id="pPhoto">
         </div>
 
-        <div class="profile-section-title">👶 За бебето</div>
-        <div class="form-group"><label>Име на бебето</label><input type="text" id="pName" placeholder="Малкото Мариче..."></div>
+        <div class="profile-section-title">👶 За детето</div>
+        <div class="form-group"><label>Име на детето</label><input type="text" id="pName" placeholder="Малкото Мариче..."></div>
         <div class="form-row">
           <div class="form-group"><label>Дата на раждане</label><input type="date" id="pBirth"></div>
           <div class="form-group"><label>Час на раждане</label><input type="time" id="pBirthTime"></div>
@@ -1850,7 +1849,7 @@ function loadFeeding(){var el=document.getElementById('feedingList');if(el)el.in
 function renderFeeding(data,sortBy,filterBy){var el=document.getElementById('feedingList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">🥣</div><div class="empty-state-text">Проследявай кои храни сте опитали</div><button class="empty-state-btn" onclick="openModal(\'feeding\')">+ Нова храна</button></div>';return;}var fv=filterBy||currentFilters['feeding']||'all';var filtered=data;if(fv==='allergy')filtered=data.filter(function(f){return f.allergy==='Да';});else if(fv==='liked')filtered=data.filter(function(f){return(f.reaction||'').indexOf('Хареса')!==-1;});var sv=sortBy||currentSorts['feeding']||'date-new';var sorted=sortData(filtered,sv);var emojis={'зеленчук':'🥦','морков':'🥕','картоф':'🥔','плод':'🍎','ябълк':'🍎','банан':'🍌','ягод':'🍓','каша':'🍚','ориз':'🍚','месо':'🍗','пиле':'🍗','яйце':'🥚','риба':'🐟','мляко':'🍼','кисело':'🥛','хляб':'🍞','бисквит':'🍪'};var tb=getSortFilterHTML('feeding',{sorts:[{value:'date-new',label:'📅 Най-нови',default:true},{value:'date-old',label:'📅 Най-стари'},{value:'name-az',label:'🔤 По име'}],filters:[{value:'all',label:'Всички'},{value:'allergy',label:'⚠️ Алергии'},{value:'liked',label:'😊 Харесани'}]},sv,fv);el.innerHTML=tb+sorted.map(function(f){var em='🥣',fl=(f.food||'').toLowerCase(),ek=Object.keys(emojis);for(var i=0;i<ek.length;i++){if(fl.indexOf(ek[i])!==-1){em=emojis[ek[i]];break;}}var ab=(f.allergy==='Да')?'<span class="feeding-allergy">⚠️ Алергия</span>':'';return '<div class="feeding-item"><span class="feeding-emoji">'+em+'</span><div class="feeding-info"><div class="feeding-name">'+esc(f.food)+'</div><div class="feeding-reaction">'+esc(f.reaction||'')+'</div>'+ab+'</div><div class="feeding-date">'+esc(f.date)+'</div><button class="note-delete" onclick="event.stopPropagation();deleteEntryConfirm(\'Хранене\','+f._rowIndex+',\'feeding\')" title="Изтрий">🗑️</button></div>';}).join('');}
 
 function loadDoctors(){var el=document.getElementById('doctorsList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedDoctors=d||[];renderDoctors(cachedDoctors);}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getDoctors();}
-function renderDoctors(data,sortBy){var el=document.getElementById('doctorsList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">👩‍⚕️</div><div class="empty-state-text">Добави лекарите на бебето</div><button class="empty-state-btn" onclick="openModal(\'doctor\')">+ Нов лекар</button></div>';return;}var sorted=sortData(data,sortBy||'category');var tb=getSortFilterHTML('doctors',{sorts:[{value:'category',label:'📂 По специалност',default:true},{value:'name-az',label:'🔤 По име'}]});var icons={'Педиатър':'👶','Ортопед':'🦴','Офталмолог':'👁️','Невролог':'🧠','Дерматолог':'🌿','УНГ':'👂','Кардиолог':'❤️','Алерголог':'🤧','Хирург':'🔬'};el.innerHTML=tb+sorted.map(function(d){var ic='👩‍⚕️',sk=Object.keys(icons);for(var i=0;i<sk.length;i++){if((d.specialty||'').indexOf(sk[i])!==-1){ic=icons[sk[i]];break;}}var pb=d.phone?'<a href="tel:'+esc(d.phone)+'" class="doctor-call-btn">📞</a>':'';return '<div class="doctor-card"><div class="doctor-avatar">'+ic+'</div><div class="doctor-info"><div class="doctor-specialty">'+esc(d.specialty)+'</div><div class="doctor-name">'+esc(d.name)+'</div>'+(d.phone?'<div class="doctor-phone">'+esc(d.phone)+'</div>':'')+(d.address?'<div class="doctor-address">📍 '+esc(d.address)+'</div>':'')+'</div>'+pb+'</div>';}).join('');}
+function renderDoctors(data,sortBy){var el=document.getElementById('doctorsList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">👩‍⚕️</div><div class="empty-state-text">Добави лекарите на детето</div><button class="empty-state-btn" onclick="openModal(\'doctor\')">+ Нов лекар</button></div>';return;}var sorted=sortData(data,sortBy||'category');var tb=getSortFilterHTML('doctors',{sorts:[{value:'category',label:'📂 По специалност',default:true},{value:'name-az',label:'🔤 По име'}]});var icons={'Педиатър':'👶','Ортопед':'🦴','Офталмолог':'👁️','Невролог':'🧠','Дерматолог':'🌿','УНГ':'👂','Кардиолог':'❤️','Алерголог':'🤧','Хирург':'🔬'};el.innerHTML=tb+sorted.map(function(d){var ic='👩‍⚕️',sk=Object.keys(icons);for(var i=0;i<sk.length;i++){if((d.specialty||'').indexOf(sk[i])!==-1){ic=icons[sk[i]];break;}}var pb=d.phone?'<a href="tel:'+esc(d.phone)+'" class="doctor-call-btn">📞</a>':'';return '<div class="doctor-card"><div class="doctor-avatar">'+ic+'</div><div class="doctor-info"><div class="doctor-specialty">'+esc(d.specialty)+'</div><div class="doctor-name">'+esc(d.name)+'</div>'+(d.phone?'<div class="doctor-phone">'+esc(d.phone)+'</div>':'')+(d.address?'<div class="doctor-address">📍 '+esc(d.address)+'</div>':'')+'</div>'+pb+'</div>';}).join('');}
 
 function loadProfile(){
   google.script.run.withSuccessHandler(function(d){
@@ -1902,8 +1901,6 @@ function renderProfileCard(d, photoSrc) {
   }).join('');
   // Sheets линк
   google.script.run.withSuccessHandler(function(r){
-    if(r&&r.url){var link=document.getElementById('profileSheetsLink');if(link)link.href=r.url;}
-  }).getSpreadsheetUrl();
   card.style.display='block';
   editForm.style.display='none';
 }
