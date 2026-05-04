@@ -1011,7 +1011,12 @@ function handleLogin(response) {
   showLoginStatus('loading', '⏳ Свързваме се с твоите данни...');
 
   callApi('init', { country: navigator.language || '' }, currentToken)
-    .then(function() {
+    .then(function(result) {
+      // Ако GAS върне folderId — запазваме го (папката е вече създадена от GAS)
+      if (result && result.folderId && !localStorage.getItem('maichin_folderId')) {
+        _driveFolderId = result.folderId;
+        localStorage.setItem('maichin_folderId', result.folderId);
+      }
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('splash').style.display = 'flex';
       loadDashboard();

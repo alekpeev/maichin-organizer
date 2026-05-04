@@ -160,22 +160,45 @@ function _getUserSpreadsheet(email) {
     }
   }
 
-  // Нова потребителка — създаваме таблица
+  // Нова потребителка — създаваме главна папка + таблица вътре в нея
+  var folderKey = 'folder_' + email.replace(/[@.+]/g, '_');
+  var folder;
+  try {
+    folder = DriveApp.createFolder('Майчин Органайзър');
+  } catch (e) {
+    folder = DriveApp.getRootFolder();
+  }
+
   var ss = SpreadsheetApp.create('Майчин Органайзър — данни');
   ssId = ss.getId();
 
-  // Прехвърляме собствеността на потребителката (данните са в НЕЙНИЯ Drive)
+  // Местим таблицата в папката (преди прехвърляне на собствеността)
   try {
+    DriveApp.getFileById(ssId).moveTo(folder);
+  } catch (e) {
+    Logger.log('Move to folder failed: ' + e.message);
+  }
+
+  // Прехвърляме собствеността на папката и таблицата на потребителката
+  try {
+    folder.setOwner(email);
     DriveApp.getFileById(ssId).setOwner(email);
   } catch (e) {
-    // Ако прехвърлянето не успее (напр. различен домейн), оставаме собственици
     Logger.log('Ownership transfer failed for ' + email + ': ' + e.message);
   }
 
   _setupSheets(ss);
   props.setProperty(key, ssId);
+  props.setProperty(folderKey, folder.getId());
 
   return ss;
+}
+
+/** Връща ID на главната Drive папка за потребителя (ако е запазено) */
+function _getUserFolderId(email) {
+  var props = PropertiesService.getScriptProperties();
+  var folderKey = 'folder_' + email.replace(/[@.+]/g, '_');
+  return props.getProperty(folderKey) || null;
 }
 
 /** Рутира API заявката към правилната функция */
@@ -184,7 +207,7 @@ function _routeAction(action, data, email) {
   _ssCache = _getUserSpreadsheet(email);
 
   switch (action) {
-    case 'init':           return { spreadsheetId: _ssCache.getId(), email: email };
+    case 'init':           return { spreadsheetId: _ssCache.getId(), email: email, folderId: _getUserFolderId(email) };
     case 'getProfile':     return getProfile();
     case 'saveProfile':    return saveProfile(data);
     case 'getDashboard':   return getDashboardData();
