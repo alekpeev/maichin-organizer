@@ -1069,7 +1069,9 @@ var google = {
             var onFailure = _pendingFailure;
             _pendingSuccess = null;
             _pendingFailure = null;
-            var sub = fileName && fileName.indexOf('profile_') === 0 ? '👶 Профил' : '📸 Спомени';
+            var _subFolders = { 'profile': '👶 Профил', 'achievement': '⭐ Постижения', 'memory': '📸 Спомени', 'note': '📝 Бележки' };
+            var _prefix = (fileName || '').split('_')[0];
+            var sub = _subFolders[_prefix] || '📸 Спомени';
             uploadDirectToDrive(base64, fileName, mimeType, function(result) {
               if (result.success) { if (onSuccess) onSuccess(result); }
               else {
@@ -1993,7 +1995,7 @@ function getPhotoValue(id){if(pendingPhotoData&&pendingPhotoData.fieldId===id)re
 function triggerCamera(id){var i=document.getElementById(id+'_camera');if(i)i.click();}
 function triggerGallery(id){var i=document.getElementById(id+'_file');if(i)i.click();}
 function toggleUrlInput(id){var w=document.getElementById(id+'_url_wrap');if(w)w.classList.toggle('visible');}
-function handleFileSelect(ev,id){var file=ev.target.files[0];if(!file)return;if(!file.type.startsWith('image/')){showToast('⚠️ Избери снимка');return;}if(file.size>10*1024*1024){showToast('⚠️ Макс. 10MB');return;}var area=document.getElementById(id+'_area');if(area){area.classList.add('has-photo');area.innerHTML='<div class="photo-uploading"><span class="spinner"></span> Зареждам...</div>';}compressImage(file,function(b64,mime){pendingPhotoData={fieldId:id,base64:b64,fileName:'photo_'+Date.now()+'.jpg',mimeType:mime||'image/jpeg'};if(area)area.innerHTML='<img class="photo-upload-preview" src="data:'+mime+';base64,'+b64+'"><button type="button" class="photo-remove-btn" onclick="removePhoto(\''+id+'\',event)">✕</button>';});}
+function handleFileSelect(ev,id){var file=ev.target.files[0];if(!file)return;if(!file.type.startsWith('image/')){showToast('⚠️ Избери снимка');return;}if(file.size>10*1024*1024){showToast('⚠️ Макс. 10MB');return;}var area=document.getElementById(id+'_area');if(area){area.classList.add('has-photo');area.innerHTML='<div class="photo-uploading"><span class="spinner"></span> Зареждам...</div>';}compressImage(file,function(b64,mime){var _sectionPrefixes={'f_photo':'achievement','f_mphoto':'memory','f_nphoto':'note'};var _fp=_sectionPrefixes[id]||'photo';pendingPhotoData={fieldId:id,base64:b64,fileName:_fp+'_'+Date.now()+'.jpg',mimeType:mime||'image/jpeg'};if(area)area.innerHTML='<img class="photo-upload-preview" src="data:'+mime+';base64,'+b64+'"><button type="button" class="photo-remove-btn" onclick="removePhoto(\''+id+'\',event)">✕</button>';});}
 function compressImage(file,cb){var r=new FileReader();r.onload=function(e){var img=new Image();img.onload=function(){var c=document.createElement('canvas'),mx=1200,w=img.width,h=img.height;if(w>mx||h>mx){if(w>h){h=Math.round(h*mx/w);w=mx;}else{w=Math.round(w*mx/h);h=mx;}}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);var d=c.toDataURL('image/jpeg',0.8);cb(d.split(',')[1],'image/jpeg');};img.src=e.target.result;};r.readAsDataURL(file);}
 function removePhoto(id,ev){if(ev)ev.stopPropagation();pendingPhotoData=null;var area=document.getElementById(id+'_area');if(area){area.classList.remove('has-photo');area.innerHTML='<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Натисни за снимка</div><div class="photo-upload-hint">Камера, галерия или линк</div>';}['_file','_camera'].forEach(function(s){var i=document.getElementById(id+s);if(i)i.value='';});}
 
