@@ -960,7 +960,7 @@ img, input, select, textarea, canvas, svg, video, iframe {
 // ================================================================
 // КОНФИГУРАЦИЯ И JSONP API
 // ================================================================
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbwatrN4yc1l4sw5cDobk0EVBRStKhmHRroA08oGVXVRQV-ihQOdM-WTmB-FMkBodsR9tw/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyoyPO90m_Lm7rkJGCeRfrEt6M5OwDSqNrPh0hKXmABtNs9llSoz61r-_TiidH6oDCWHw/exec';
 var currentToken = null;
 
 function callApi(action, data, token) {
@@ -971,6 +971,8 @@ function callApi(action, data, token) {
       action: action, token: token,
       data: JSON.stringify(data || {}), callback: cbName
     });
+    var fullUrl = GAS_URL + '?' + params.toString();
+    window._lastGasUrl = fullUrl;
     var timer = setTimeout(function() {
       cleanup();
       reject(new Error('Времето изтече — GAS не отговори.'));
@@ -985,8 +987,8 @@ function callApi(action, data, token) {
       if (response.success) resolve(response.result);
       else reject(new Error(response.error || 'Грешка от сървъра'));
     };
-    script.onerror = function() { cleanup(); reject(new Error('Неуспешна връзка с GAS')); };
-    script.src = GAS_URL + '?' + params.toString();
+    script.onerror = function() { cleanup(); reject(new Error('Неуспешна връзка с GAS (script.onerror) — URL дължина: ' + fullUrl.length)); };
+    script.src = fullUrl;
     document.head.appendChild(script);
   });
 }
@@ -1023,7 +1025,12 @@ function handleLogin(response) {
     })
     .catch(function(err) {
       currentToken = null;
-      showLoginStatus('error', '❌ ' + err.message);
+      var html = '❌ ' + err.message;
+      if (window._lastGasUrl) {
+        html += '<br><br><a href="' + window._lastGasUrl + '" target="_blank" style="color:#0066cc;text-decoration:underline">🔍 Отвори заявката в нов таб (за диагностика)</a>';
+        html += '<br><small style="color:#666">Това ще покаже какво точно връща GAS</small>';
+      }
+      showLoginStatus('error', html);
     });
 }
 

@@ -129,12 +129,20 @@ function _jsonResponse(data) {
 /** Верифицира Google id_token и връща email на потребителя */
 function _verifyIdToken(token) {
   try {
-    var url = 'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(token);
-    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    var info = JSON.parse(response.getContentText());
-    if (response.getResponseCode() !== 200) throw new Error('Невалиден токен.');
+    // Декодираме JWT локално (без UrlFetchApp — за да избегнем OAuth проблеми)
+    var parts = token.split('.');
+    if (parts.length !== 3) throw new Error('Невалиден формат на токен.');
+    var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    var decoded = Utilities.base64Decode(payload);
+    var info = JSON.parse(Utilities.newBlob(decoded).getDataAsString());
+
     if (!info.email) throw new Error('Токенът не съдържа email.');
     if (info.aud !== API_CLIENT_ID) throw new Error('Токенът не е за това приложение.');
+    if (info.exp && info.exp * 1000 < Date.now()) throw new Error('Токенът е изтекъл.');
+    if (info.iss !== 'https://accounts.google.com' && info.iss !== 'accounts.google.com') {
+      throw new Error('Токенът не е от Google.');
+    }
     return info.email;
   } catch (err) {
     throw new Error('Грешка при верификация: ' + err.message);
@@ -160,36 +168,20 @@ function _getUserSpreadsheet(email) {
     }
   }
 
-  // Нова потребителка — създаваме главна папка + таблица вътре в нея
-  var folderKey = 'folder_' + email.replace(/[@.+]/g, '_');
-  var folder;
-  try {
-    folder = DriveApp.createFolder('Майчин Органайзър');
-  } catch (e) {
-    folder = DriveApp.getRootFolder();
-  }
-
-  var ss = SpreadsheetApp.create('Майчин Органайзър — данни');
+  // Нова потребителка — само създаваме таблицата (без папки и без setOwner)
+  // setOwner и createFolder изискват специални Drive разрешения, които чупят логина
+  var ss = SpreadsheetApp.create('Майчин Органайзър — ' + email);
   ssId = ss.getId();
 
-  // Местим таблицата в папката (преди прехвърляне на собствеността)
+  // Споделяме за писане с потребителя (по-безопасно от setOwner)
   try {
-    DriveApp.getFileById(ssId).moveTo(folder);
+    DriveApp.getFileById(ssId).addEditor(email);
   } catch (e) {
-    Logger.log('Move to folder failed: ' + e.message);
-  }
-
-  // Прехвърляме собствеността на папката и таблицата на потребителката
-  try {
-    folder.setOwner(email);
-    DriveApp.getFileById(ssId).setOwner(email);
-  } catch (e) {
-    Logger.log('Ownership transfer failed for ' + email + ': ' + e.message);
+    Logger.log('Add editor failed for ' + email + ': ' + e.message);
   }
 
   _setupSheets(ss);
   props.setProperty(key, ssId);
-  props.setProperty(folderKey, folder.getId());
 
   return ss;
 }
@@ -404,6 +396,26 @@ function initializeApp() {
     _ensureNewSheets();
     return { success: true, spreadsheetId: ss.getId() };
   } catch (e) { return { success: false, error: e.message }; }
+}
+
+/** Оторизира всички нужни scopes — стартирай от редактора веднъж след deploy */
+function authorizeAll() {
+  try {
+    // Тества UrlFetchApp (нужен за верификация на токени)
+    var r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=test', { muteHttpExceptions: true });
+    Logger.log('UrlFetchApp: OK (status ' + r.getResponseCode() + ')');
+  } catch (e) {
+    Logger.log('UrlFetchApp грешка: ' + e.message);
+  }
+  try {
+    // Тества SpreadsheetApp
+    var ss = SpreadsheetApp.create('test_maichin_auth');
+    DriveApp.getFileById(ss.getId()).setTrashed(true);
+    Logger.log('SpreadsheetApp + DriveApp: OK');
+  } catch (e) {
+    Logger.log('SpreadsheetApp грешка: ' + e.message);
+  }
+  return 'Готово — виж логовете';
 }
 
 // ============================================================
