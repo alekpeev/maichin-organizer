@@ -789,12 +789,13 @@ function deleteNote(noteId) {
 // ============================================================
 function getDashboardData() {
   try {
+    // Чете всеки лист само веднъж — без дублирани извиквания на getProfile() или _ensureNewSheets()
     const profile = getProfile();
     const birthDateStr = profile['Дата на раждане'];
+    const now = new Date();
     let age = null;
     if (birthDateStr) {
       const birth = new Date(birthDateStr);
-      const now = new Date();
       let years = now.getFullYear() - birth.getFullYear();
       let months = now.getMonth() - birth.getMonth();
       let days = now.getDate() - birth.getDate();
@@ -803,27 +804,85 @@ function getDashboardData() {
       const totalDays = Math.floor((now - birth) / (1000 * 60 * 60 * 24));
       age = { years: years, months: months, days: days, totalDays: totalDays, totalMonths: years * 12 + months };
     }
-    const milestones = getMilestones();
-    const health = getHealth();
-    const memories = getMemories();
-    const growth = getGrowth();
-    let nextVaccine = null;
-    const now = Date.now();
-    if (health.schedule && health.schedule.length) {
-      const upcoming = health.schedule.filter(function(v) { return v.status !== 'done' && v.dueDateMs > now; });
-      if (upcoming.length > 0) { upcoming.sort(function(a, b) { return a.dueDateMs - b.dueDateMs; }); nextVaccine = { name: upcoming[0].short, fullName: upcoming[0].name, dueDate: upcoming[0].dueDate, status: upcoming[0].status }; }
-    }
-    const overdueVaccines = health.schedule ? health.schedule.filter(function(v) { return v.status === 'overdue'; }).length : 0;
+    const milestones = _readSheet(SHEET_NAMES.MILESTONES, MILESTONE_COLS);
+    const healthRecords = _readSheet(SHEET_NAMES.HEALTH, HEALTH_COLS);
+    const memories = _readSheet(SHEET_NAMES.MEMORIES, MEMORIES_COLS).reverse();
+    const growth = _readSheet(SHEET_NAMES.GROWTH, GROWTH_COLS).reverse();
     var notes = { active: [], done: [] };
     try { notes = getNotes(); } catch (e) {}
+
+    // Ваксинен график — без повторно четене на профила
+    let vaccineSchedule = [];
+    if (birthDateStr) {
+      const birthDate = new Date(birthDateStr);
+      const doneMap = {};
+      healthRecords.forEach(function(v) { if (v.done) doneMap[v.name] = v; });
+      vaccineSchedule = VACCINE_SCHEDULE.map(function(v) {
+        const dueDate = new Date(birthDate);
+        dueDate.setMonth(dueDate.getMonth() + v.month);
+        const diffDays = Math.round((dueDate - now) / (1000 * 60 * 60 * 24));
+        let status = diffDays < 0 ? 'overdue' : (diffDays <= 30 ? 'upcoming' : 'future');
+        const s = { month: v.month, name: v.name, short: v.short, dueDate: Utilities.formatDate(dueDate, 'Europe/Sofia', 'dd.MM.yyyy'), dueDateISO: Utilities.formatDate(dueDate, 'Europe/Sofia', 'yyyy-MM-dd'), dueDateMs: dueDate.getTime(), status: status, diffDays: diffDays };
+        if (doneMap[v.name]) { s.status = 'done'; s.doneDate = doneMap[v.name].done; s.doneDoctor = doneMap[v.name].doctor; s.doneReaction = doneMap[v.name].reaction; }
+        return s;
+      });
+      var so = {'overdue':0,'upcoming':1,'future':2,'done':3};
+      vaccineSchedule.sort(function(a,b){ var oa=so[a.status]!==undefined?so[a.status]:2; var ob=so[b.status]!==undefined?so[b.status]:2; if(oa!==ob)return oa-ob; return a.dueDateMs-b.dueDateMs; });
+    }
+
+    // График прегледи — без _ensureNewSheets() и без повторно четене на профила
+    var checkupSchedule = [];
+    try {
+      const checkupsData = _readSheet(SHEET_NAMES.CHECKUPS, CHECKUP_COLS);
+      if (birthDateStr) {
+        const birthDate = new Date(birthDateStr);
+        const doneMap2 = {};
+        checkupsData.forEach(function(c){ if(c.done) doneMap2[c.name]=c; });
+        checkupSchedule = CHECKUP_SCHEDULE.map(function(c){
+          const dueDate = new Date(birthDate);
+          dueDate.setMonth(dueDate.getMonth() + c.month);
+          const diffDays = Math.round((dueDate - now) / (1000*60*60*24));
+          let status = diffDays<0?'overdue':(diffDays<=30?'upcoming':'future');
+          const s = { month:c.month, name:c.name, dueDate:Utilities.formatDate(dueDate,'Europe/Sofia','dd.MM.yyyy'), dueDateISO:Utilities.formatDate(dueDate,'Europe/Sofia','yyyy-MM-dd'), dueDateMs:dueDate.getTime(), status:status, diffDays:diffDays, type:'auto' };
+          if(doneMap2[c.name]){ s.status='done'; s.doneDate=doneMap2[c.name].done; s.doneDoctor=doneMap2[c.name].doctor; }
+          return s;
+        });
+        var so2={'overdue':0,'upcoming':1,'future':2,'done':3};
+        checkupSchedule.sort(function(a,b){ var oa=so2[a.status]!==undefined?so2[a.status]:2; var ob=so2[b.status]!==undefined?so2[b.status]:2; if(oa!==ob)return oa-ob; return(a.dueDateMs||0)-(b.dueDateMs||0); });
+      }
+    } catch (e) {}
+
+    // Боледувания — без _ensureNewSheets()
+    var activeIllnesses = [];
+    try {
+      var allIll = _readSheet(SHEET_NAMES.ILLNESSES, ILLNESS_COLS);
+      activeIllnesses = allIll.filter(function(i){ return !i.dateEnd; });
+    } catch (e) {}
+
+    // Изграждане на dashboard резултата
+    const nowMs = now.getTime();
+    let nextVaccine = null;
+    if (vaccineSchedule.length) {
+      const upcoming = vaccineSchedule.filter(function(v){ return v.status!=='done'&&v.dueDateMs>nowMs; });
+      if (upcoming.length>0) { upcoming.sort(function(a,b){return a.dueDateMs-b.dueDateMs;}); nextVaccine={name:upcoming[0].short,fullName:upcoming[0].name,dueDate:upcoming[0].dueDate,status:upcoming[0].status}; }
+    }
+    const overdueVaccines = vaccineSchedule.filter(function(v){return v.status==='overdue';}).length;
     var upcomingEvents = [];
-    if (health.schedule) { health.schedule.forEach(function(v) { if ((v.status === 'overdue' || v.status === 'upcoming') && v.dueDateMs) upcomingEvents.push({ type: 'vaccine', name: v.short || v.name, date: v.dueDate, status: v.status, dateMs: v.dueDateMs }); }); }
-    try { var checkups = getCheckups(); checkups.forEach(function(c) { if ((c.status === 'overdue' || c.status === 'upcoming') && c.dueDateMs) upcomingEvents.push({ type: 'checkup', name: c.name, date: c.dueDate, status: c.status, dateMs: c.dueDateMs }); }); } catch (e) {}
-    try { var illnesses = getIllnesses(); if (illnesses.active) { illnesses.active.forEach(function(ill) { if (ill.quarantineUntil) upcomingEvents.push({ type: 'quarantine', name: 'Карантина: ' + ill.illness, date: ill.quarantineUntil, status: 'upcoming', dateMs: new Date(ill.quarantineUntil.split('.').reverse().join('-')).getTime() || 0 }); if (ill.controlCheckup) upcomingEvents.push({ type: 'control', name: 'Контролен: ' + ill.illness, date: ill.controlCheckup, status: 'upcoming', dateMs: new Date(ill.controlCheckup.split('.').reverse().join('-')).getTime() || 0 }); }); } } catch (e) {}
-    upcomingEvents.sort(function(a, b) { var sa = a.status === 'overdue' ? 0 : 1; var sb = b.status === 'overdue' ? 0 : 1; if (sa !== sb) return sa - sb; return (a.dateMs || 0) - (b.dateMs || 0); });
-    var pediatricianPhone = profile['Педиатър телефон'] || '';
-    var pediatricianName = profile['Педиатър име'] || profile['Лекуващ педиатър'] || '';
-    return { profile: profile, age: age, milestonesCount: milestones.length, memoriesCount: memories.length, lastGrowth: growth.length > 0 ? growth[0] : null, nextVaccine: nextVaccine, overdueVaccines: overdueVaccines, activeNotes: notes.active ? notes.active.slice(0, 5) : [], activeNotesCount: notes.active ? notes.active.length : 0, upcomingEvents: upcomingEvents.slice(0, 8), pediatricianPhone: pediatricianPhone, pediatricianName: pediatricianName, recentMemories: memories.slice(0, 3), recentMilestones: milestones.slice(-3).reverse() };
+    vaccineSchedule.forEach(function(v){ if((v.status==='overdue'||v.status==='upcoming')&&v.dueDateMs) upcomingEvents.push({type:'vaccine',name:v.short||v.name,date:v.dueDate,status:v.status,dateMs:v.dueDateMs}); });
+    checkupSchedule.forEach(function(c){ if((c.status==='overdue'||c.status==='upcoming')&&c.dueDateMs) upcomingEvents.push({type:'checkup',name:c.name,date:c.dueDate,status:c.status,dateMs:c.dueDateMs}); });
+    activeIllnesses.forEach(function(ill){
+      if(ill.quarantineUntil) upcomingEvents.push({type:'quarantine',name:'Карантина: '+ill.illness,date:ill.quarantineUntil,status:'upcoming',dateMs:new Date(ill.quarantineUntil.split('.').reverse().join('-')).getTime()||0});
+      if(ill.controlCheckup) upcomingEvents.push({type:'control',name:'Контролен: '+ill.illness,date:ill.controlCheckup,status:'upcoming',dateMs:new Date(ill.controlCheckup.split('.').reverse().join('-')).getTime()||0});
+    });
+    upcomingEvents.sort(function(a,b){ var sa=a.status==='overdue'?0:1; var sb=b.status==='overdue'?0:1; if(sa!==sb)return sa-sb; return(a.dateMs||0)-(b.dateMs||0); });
+    return {
+      profile: profile, age: age, milestonesCount: milestones.length, memoriesCount: memories.length,
+      lastGrowth: growth.length>0?growth[0]:null, nextVaccine: nextVaccine, overdueVaccines: overdueVaccines,
+      activeNotes: notes.active?notes.active.slice(0,5):[], activeNotesCount: notes.active?notes.active.length:0,
+      upcomingEvents: upcomingEvents.slice(0,8), pediatricianPhone: profile['Педиатър телефон']||'',
+      pediatricianName: profile['Педиатър име']||profile['Лекуващ педиатър']||'',
+      recentMemories: memories.slice(0,3), recentMilestones: milestones.slice(-3).reverse()
+    };
   } catch (e) {
     Logger.log('Dashboard error: ' + e.message);
     return { error: e.message, profile: {}, age: null, milestonesCount: 0, memoriesCount: 0, lastGrowth: null, nextVaccine: null, overdueVaccines: 0, activeNotes: [], activeNotesCount: 0, upcomingEvents: [], pediatricianPhone: '', pediatricianName: '', recentMemories: [], recentMilestones: [] };

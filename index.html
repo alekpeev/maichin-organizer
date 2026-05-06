@@ -608,7 +608,7 @@ img, input, select, textarea, canvas, svg, video, iframe {
   <div class="splash-content">
     <div class="splash-logo"><img src="icon-192.png" style="width:96px;height:96px;border-radius:24px;box-shadow:0 4px 20px rgba(212,104,138,0.25)"></div>
     <div class="splash-title">Майчин Органайзър</div>
-    <div class="splash-sub">Зарежда се...</div>
+    <div class="splash-sub" id="splashStatus">Зарежда се...</div>
     <div class="splash-dots"><span></span><span></span><span></span></div>
   </div>
 </div>
@@ -976,7 +976,7 @@ function callApi(action, data, token) {
     var timer = setTimeout(function() {
       cleanup();
       reject(new Error('Времето изтече — GAS не отговори.'));
-    }, 20000);
+    }, 55000);
     function cleanup() {
       clearTimeout(timer);
       delete window[cbName];
@@ -1105,12 +1105,16 @@ var google = {
           callApi(action, data, currentToken)
             .then(function(result) { if (onSuccess) onSuccess(result); })
             .catch(function(err) {
-              if (err.message && err.message.indexOf('токен') !== -1) {
+              var splashEl = document.getElementById('splash');
+              var splashVisible = splashEl && splashEl.style.display !== 'none' && !splashEl.classList.contains('hide');
+              if (err.message && err.message.toLowerCase().indexOf('токен') !== -1) {
                 showToast('⚠️ Сесията изтече. Презареди страницата.');
+                if (splashVisible) hideSplash();
               } else if (onFailure) {
                 onFailure({ message: err.message });
               } else {
                 showToast('⚠️ ' + err.message);
+                if (splashVisible) hideSplash();
               }
             });
         };
@@ -1384,11 +1388,33 @@ function hideSplash() { var s = document.getElementById('splash'); if (!s) retur
 // DASHBOARD
 // ============================================================
 function loadDashboard() {
-  google.script.run.withSuccessHandler(function (d) {
-    appData = d || {};
-    if (!d || !d.profile || !d.profile['Име на бебето']) { hideSplash(); renderDashboard(d || {}); return; }
-    renderDashboard(d); hideSplash();
-  }).withFailureHandler(function (e) { hideSplash(); showToast('⚠️ ' + e.message); }).getDashboardData();
+  if (!currentToken) {
+    hideSplash();
+    showToast('⚠️ Сесията изтече. Презареди страницата.');
+    return;
+  }
+  var statusEl = document.getElementById('splashStatus');
+  var seconds = 0;
+  var progressTimer = setInterval(function() {
+    seconds++;
+    if (!statusEl) return;
+    if (seconds < 5) statusEl.textContent = 'Зарежда се...';
+    else if (seconds < 15) statusEl.textContent = 'Подготвяме данните... (' + seconds + 'с)';
+    else statusEl.textContent = 'Малко повечко... (' + seconds + 'с)';
+  }, 1000);
+  callApi('getDashboard', {}, currentToken)
+    .then(function(d) {
+      clearInterval(progressTimer);
+      appData = d || {};
+      if (!d || !d.profile || !d.profile['Име на бебето']) { hideSplash(); renderDashboard(d || {}); return; }
+      renderDashboard(d); hideSplash();
+    })
+    .catch(function(err) {
+      clearInterval(progressTimer);
+      hideSplash();
+      showToast('⚠️ ' + err.message);
+      renderDashboard({});
+    });
 }
 
 function renderDashboard(data) {
