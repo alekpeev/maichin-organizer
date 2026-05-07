@@ -1018,17 +1018,24 @@ function handleLogin(response) {
         _driveFolderId = result.folderId;
         localStorage.setItem('maichin_folderId', result.folderId);
       }
-      // Показваме приложението ВЕДНАГА — без спинър
-      document.getElementById('loginScreen').style.display = 'none';
+      // Премахваме loginScreen и splash от DOM — 100% сигурно, нищо не блокира кликовете
+      var loginEl = document.getElementById('loginScreen');
+      if (loginEl) loginEl.remove();
+      var splashEl = document.getElementById('splash');
+      if (splashEl) splashEl.remove();
+      // Показваме приложението
       var appEl = document.getElementById('app');
       if (appEl) appEl.style.display = 'block';
-      // Показваме кешираните данни веднага (ако има), после зареждаме нови
-      var cached = localStorage.getItem('maichin_dashCache');
-      if (cached) { try { appData = JSON.parse(cached); renderDashboard(appData); } catch(e) {} }
-      else { renderDashboard({}); }
+      // Рендираме — в try/catch за да не се изчисти currentToken при грешка
+      try {
+        var cached = localStorage.getItem('maichin_dashCache');
+        appData = cached ? JSON.parse(cached) : {};
+        renderDashboard(appData);
+      } catch(e) { appData = {}; }
       loadDashboard();
     })
     .catch(function(err) {
+      // Тук влизаме само ако init самото е неуспешно (мрежова грешка и т.н.)
       currentToken = null;
       var html = '❌ ' + (err && err.message ? err.message : 'Грешка при свързване');
       if (window._lastGasUrl) {
