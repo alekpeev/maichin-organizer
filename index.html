@@ -1402,17 +1402,29 @@ function loadDashboard() {
     else if (seconds < 15) statusEl.textContent = 'Подготвяме данните... (' + seconds + 'с)';
     else statusEl.textContent = 'Малко повечко... (' + seconds + 'с)';
   }, 1000);
+  // Failsafe: ако нищо друго не скрие сплаша след 65 сек — скриваме принудително
+  var splashFailsafe = setTimeout(function() {
+    var s = document.getElementById('splash');
+    if (s && s.style.display !== 'none' && !s.classList.contains('hide')) {
+      hideSplash();
+      showToast('⚠️ Зареждането отне твърде дълго. Опитай пак.');
+      renderDashboard({});
+    }
+  }, 65000);
+
   callApi('getDashboard', {}, currentToken)
     .then(function(d) {
+      clearTimeout(splashFailsafe);
       clearInterval(progressTimer);
       appData = d || {};
-      if (!d || !d.profile || !d.profile['Име на бебето']) { hideSplash(); renderDashboard(d || {}); return; }
-      renderDashboard(d); hideSplash();
+      hideSplash();
+      renderDashboard(d || {});
     })
     .catch(function(err) {
+      clearTimeout(splashFailsafe);
       clearInterval(progressTimer);
       hideSplash();
-      showToast('⚠️ ' + err.message);
+      showToast('⚠️ ' + (err && err.message ? err.message : 'Неочаквана грешка при зареждане'));
       renderDashboard({});
     });
 }
