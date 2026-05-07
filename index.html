@@ -1014,21 +1014,25 @@ function handleLogin(response) {
 
   callApi('init', { country: navigator.language || '' }, currentToken)
     .then(function(result) {
-      // Ако GAS върне folderId — запазваме го (папката е вече създадена от GAS)
       if (result && result.folderId && !localStorage.getItem('maichin_folderId')) {
         _driveFolderId = result.folderId;
         localStorage.setItem('maichin_folderId', result.folderId);
       }
+      // Показваме приложението ВЕДНАГА — без спинър
       document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('splash').style.display = 'flex';
+      var appEl = document.getElementById('app');
+      if (appEl) appEl.style.display = 'block';
+      // Показваме кешираните данни веднага (ако има), после зареждаме нови
+      var cached = localStorage.getItem('maichin_dashCache');
+      if (cached) { try { appData = JSON.parse(cached); renderDashboard(appData); } catch(e) {} }
+      else { renderDashboard({}); }
       loadDashboard();
     })
     .catch(function(err) {
       currentToken = null;
-      var html = '❌ ' + err.message;
+      var html = '❌ ' + (err && err.message ? err.message : 'Грешка при свързване');
       if (window._lastGasUrl) {
         html += '<br><br><a href="' + window._lastGasUrl + '" target="_blank" style="color:#0066cc;text-decoration:underline">🔍 Отвори заявката в нов таб (за диагностика)</a>';
-        html += '<br><small style="color:#666">Това ще покаже какво точно връща GAS</small>';
       }
       showLoginStatus('error', html);
     });
@@ -1388,44 +1392,20 @@ function hideSplash() { var s = document.getElementById('splash'); if (!s) retur
 // DASHBOARD
 // ============================================================
 function loadDashboard() {
-  if (!currentToken) {
-    hideSplash();
-    showToast('⚠️ Сесията изтече. Презареди страницата.');
-    return;
-  }
-  var statusEl = document.getElementById('splashStatus');
-  var seconds = 0;
-  var progressTimer = setInterval(function() {
-    seconds++;
-    if (!statusEl) return;
-    if (seconds < 5) statusEl.textContent = 'Зарежда се...';
-    else if (seconds < 15) statusEl.textContent = 'Подготвяме данните... (' + seconds + 'с)';
-    else statusEl.textContent = 'Малко повечко... (' + seconds + 'с)';
-  }, 1000);
-  // Failsafe: ако нищо друго не скрие сплаша след 65 сек — скриваме принудително
-  var splashFailsafe = setTimeout(function() {
-    var s = document.getElementById('splash');
-    if (s && s.style.display !== 'none' && !s.classList.contains('hide')) {
-      hideSplash();
-      showToast('⚠️ Зареждането отне твърде дълго. Опитай пак.');
-      renderDashboard({});
-    }
-  }, 65000);
-
+  if (!currentToken) return;
+  // Показваме малък индикатор в заглавието — НЕ пълноекранен спинър
+  var dashName = document.getElementById('dashName');
+  if (dashName && dashName.textContent.indexOf('…') === -1) dashName.textContent += ' ⟳';
   callApi('getDashboard', {}, currentToken)
     .then(function(d) {
-      clearTimeout(splashFailsafe);
-      clearInterval(progressTimer);
       appData = d || {};
-      hideSplash();
+      // Кешираме данните за следващото влизане
+      try { localStorage.setItem('maichin_dashCache', JSON.stringify(appData)); } catch(e) {}
       renderDashboard(d || {});
     })
     .catch(function(err) {
-      clearTimeout(splashFailsafe);
-      clearInterval(progressTimer);
-      hideSplash();
-      showToast('⚠️ ' + (err && err.message ? err.message : 'Неочаквана грешка при зареждане'));
-      renderDashboard({});
+      // При грешка — показваме малък toast, НЕ блокираме цялото приложение
+      showToast('⚠️ ' + (err && err.message ? err.message : 'Не успях да заредя данните'));
     });
 }
 
