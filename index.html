@@ -1386,13 +1386,35 @@ function _sectionError(elId, msg) {
 // DASHBOARD
 // ============================================================
 function loadDashboard() {
+  var statusEl = document.getElementById('splashStatus');
+  var seconds = 0;
+  var timer = setInterval(function() {
+    seconds++;
+    if (!statusEl) return;
+    if (seconds < 8)       statusEl.textContent = 'Зарежда се...';
+    else if (seconds < 20) statusEl.textContent = 'Подготвяме данните... (' + seconds + 'с)';
+    else                   statusEl.textContent = 'Малко повечко... (' + seconds + 'с)';
+  }, 1000);
+  // Failsafe — ако след 58 секунди не е дошъл отговор, скриваме сплаша
+  var failsafe = setTimeout(function() {
+    clearInterval(timer);
+    hideSplash();
+    showToast('⚠️ Сървърът не отговори. Провери интернет и опитай пак.');
+    renderDashboard({});
+  }, 58000);
   google.script.run
     .withSuccessHandler(function(d) {
+      clearInterval(timer); clearTimeout(failsafe);
       appData = d || {};
       if (!d || !d.profile || !d.profile['Име на бебето']) { hideSplash(); renderDashboard(d || {}); return; }
       renderDashboard(d); hideSplash();
     })
-    .withFailureHandler(function(e) { hideSplash(); showToast('⚠️ ' + (e.message || 'Грешка при зареждане')); })
+    .withFailureHandler(function(e) {
+      clearInterval(timer); clearTimeout(failsafe);
+      hideSplash();
+      showToast('⚠️ ' + (e.message || 'Грешка при зареждане'));
+      renderDashboard({});
+    })
     .getDashboardData();
 }
 
