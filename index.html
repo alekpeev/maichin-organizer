@@ -608,7 +608,7 @@ img, input, select, textarea, canvas, svg, video, iframe {
   <div class="splash-content">
     <div class="splash-logo"><img src="icon-192.png" style="width:96px;height:96px;border-radius:24px;box-shadow:0 4px 20px rgba(212,104,138,0.25)"></div>
     <div class="splash-title">Майчин Органайзър</div>
-    <div class="splash-sub" id="splashStatus">Зарежда се...</div>
+    <div class="splash-sub">Зарежда се...</div>
     <div class="splash-dots"><span></span><span></span><span></span></div>
   </div>
 </div>
@@ -797,21 +797,6 @@ img, input, select, textarea, canvas, svg, video, iframe {
     <!-- ---- ПРОФИЛ ---- -->
     <div class="section" id="sec-profile">
       <div class="section-header"><h2>Профил 👶</h2></div>
-
-      <!-- Профилна карта — показва запазените данни -->
-      <div id="profileCard" style="display:none;margin:0 0 20px;background:linear-gradient(135deg,#FDE8F0,#E8F7F3);border-radius:16px;padding:18px 16px;box-shadow:0 2px 8px rgba(212,104,138,0.1)">
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-          <div id="profileCardPhoto" style="width:64px;height:64px;border-radius:50%;background:var(--pink-l);border:2px solid var(--pink);display:flex;align-items:center;justify-content:center;font-size:1.8rem;flex-shrink:0;overflow:hidden">👶</div>
-          <div>
-            <div id="profileCardName" style="font-family:Georgia,serif;font-size:1.2rem;font-weight:600;color:var(--text)"></div>
-            <div id="profileCardAge" style="font-size:0.85rem;color:var(--text-s);margin-top:2px"></div>
-          </div>
-        </div>
-        <div id="profileCardDetails" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.82rem"></div>
-        <button onclick="document.getElementById('profileCard').style.display='none';document.getElementById('profileEditForm').style.display='block'" style="margin-top:14px;width:100%;padding:9px;background:white;border:1.5px solid var(--pink);border-radius:10px;color:var(--pink);font-weight:600;font-size:0.9rem;cursor:pointer">✏️ Редактирай профила</button>
-      </div>
-
-      <div id="profileEditForm">
       <div class="profile-form">
         <div style="text-align:center">
           <div class="profile-photo-wrap" onclick="triggerProfilePhoto()">
@@ -825,8 +810,8 @@ img, input, select, textarea, canvas, svg, video, iframe {
           <input type="hidden" id="pPhoto">
         </div>
 
-        <div class="profile-section-title">👶 За детето</div>
-        <div class="form-group"><label>Име на детето</label><input type="text" id="pName" placeholder="Малкото Мариче..."></div>
+        <div class="profile-section-title">👶 За бебето</div>
+        <div class="form-group"><label>Име на бебето</label><input type="text" id="pName" placeholder="Малкото Мариче..."></div>
         <div class="form-row">
           <div class="form-group"><label>Дата на раждане</label><input type="date" id="pBirth"></div>
           <div class="form-group"><label>Час на раждане</label><input type="time" id="pBirthTime"></div>
@@ -862,8 +847,6 @@ img, input, select, textarea, canvas, svg, video, iframe {
         <div class="form-group"><label>Бележки</label><textarea id="pNotes" placeholder="Допълнителна информация..."></textarea></div>
 
         <button class="save-btn" onclick="saveProfileForm()">💾 Запази профила</button>
-      </div><!-- end profile-form -->
-      </div><!-- end profileEditForm -->
 
         <div class="profile-section-title" style="margin-top:24px">📤 Сподели приложението</div>
         <div class="promo-card">
@@ -874,7 +857,8 @@ img, input, select, textarea, canvas, svg, video, iframe {
           </div>
           <button class="promo-btn" onclick="shareApp()">🔗 Сподели</button>
         </div>
-    </div><!-- end sec-profile -->
+      </div>
+    </div>
 
   </div><!-- end #main-content -->
 
@@ -971,12 +955,10 @@ function callApi(action, data, token) {
       action: action, token: token,
       data: JSON.stringify(data || {}), callback: cbName
     });
-    var fullUrl = GAS_URL + '?' + params.toString();
-    window._lastGasUrl = fullUrl;
     var timer = setTimeout(function() {
       cleanup();
       reject(new Error('Времето изтече — GAS не отговори.'));
-    }, 55000);
+    }, 20000);
     function cleanup() {
       clearTimeout(timer);
       delete window[cbName];
@@ -987,8 +969,8 @@ function callApi(action, data, token) {
       if (response.success) resolve(response.result);
       else reject(new Error(response.error || 'Грешка от сървъра'));
     };
-    script.onerror = function() { cleanup(); reject(new Error('Неуспешна връзка с GAS (script.onerror) — URL дължина: ' + fullUrl.length)); };
-    script.src = fullUrl;
+    script.onerror = function() { cleanup(); reject(new Error('Неуспешна връзка с GAS')); };
+    script.src = GAS_URL + '?' + params.toString();
     document.head.appendChild(script);
   });
 }
@@ -1014,19 +996,13 @@ function handleLogin(response) {
 
   callApi('init', { country: navigator.language || '' }, currentToken)
     .then(function() {
-      var ls = document.getElementById('loginScreen');
-      if (ls) ls.remove();
-      document.getElementById('app').style.display = 'block';
-      try {
-        var c = localStorage.getItem('maichin_dashCache');
-        appData = c ? JSON.parse(c) : {};
-      } catch(e) { appData = {}; }
-      renderDashboard(appData);
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('splash').style.display = 'flex';
       loadDashboard();
     })
     .catch(function(err) {
       currentToken = null;
-      showLoginStatus('error', '❌ ' + (err.message || 'Грешка при свързване'));
+      showLoginStatus('error', '❌ ' + err.message);
     });
 }
 
@@ -1077,9 +1053,7 @@ var google = {
             var onFailure = _pendingFailure;
             _pendingSuccess = null;
             _pendingFailure = null;
-            var _subFolders = { 'profile': '👶 Профил', 'achievement': '⭐ Постижения', 'memory': '📸 Спомени', 'note': '📝 Бележки' };
-            var _prefix = (fileName || '').split('_')[0];
-            var sub = _subFolders[_prefix] || '📸 Спомени';
+            var sub = fileName && fileName.indexOf('profile_') === 0 ? '👶 Профил' : '📸 Спомени';
             uploadDirectToDrive(base64, fileName, mimeType, function(result) {
               if (result.success) { if (onSuccess) onSuccess(result); }
               else {
@@ -1101,16 +1075,12 @@ var google = {
           callApi(action, data, currentToken)
             .then(function(result) { if (onSuccess) onSuccess(result); })
             .catch(function(err) {
-              var splashEl = document.getElementById('splash');
-              var splashVisible = splashEl && splashEl.style.display !== 'none' && !splashEl.classList.contains('hide');
-              if (err.message && err.message.toLowerCase().indexOf('токен') !== -1) {
+              if (err.message && err.message.indexOf('токен') !== -1) {
                 showToast('⚠️ Сесията изтече. Презареди страницата.');
-                if (splashVisible) hideSplash();
               } else if (onFailure) {
                 onFailure({ message: err.message });
               } else {
                 showToast('⚠️ ' + err.message);
-                if (splashVisible) hideSplash();
               }
             });
         };
@@ -1376,36 +1346,19 @@ function applySort(id, val) { currentSorts[id] = val; var r = { milestones: func
 function applyFilter(id, val) { currentFilters[id] = val; var r = { milestones: function(){renderMilestones(cachedMilestones,currentSorts[id],val)}, feeding: function(){renderFeeding(cachedFeeding,currentSorts[id],val)} }; if (r[id]) r[id](); }
 function sortData(data, by) { var s = data.slice(); switch (by) { case 'date-new': s.sort(function(a,b){return parseBgDate(b.date)-parseBgDate(a.date);}); break; case 'date-old': s.sort(function(a,b){return parseBgDate(a.date)-parseBgDate(b.date);}); break; case 'name-az': s.sort(function(a,b){ return (a.event||a.title||a.food||a.name||'').toLowerCase().localeCompare((b.event||b.title||b.food||b.name||'').toLowerCase(),'bg'); }); break; case 'category': s.sort(function(a,b){ return (a.category||a.specialty||'').localeCompare(b.category||b.specialty||'','bg'); }); break; } return s; }
 
-// ---- INIT ----
+// ---- INIT (ПОПРАВЕНО v7.1) ----
 
 function hideSplash() { var s = document.getElementById('splash'); if (!s) return; s.classList.add('hide'); setTimeout(function () { s.style.display = 'none'; var a = document.getElementById('app'); if (a) a.style.display = 'block'; }, 500); }
-
-// Показва грешка в секция вместо вечен спинър
-function _sectionError(elId, msg) {
-  var el = document.getElementById(elId);
-  if (!el) return;
-  var text = msg || 'Грешка при зареждане';
-  el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:#999;font-size:0.88rem">⚠️ ' + text + '</div>';
-}
 
 // ============================================================
 // DASHBOARD
 // ============================================================
 function loadDashboard() {
-  if (!currentToken) return;
-  google.script.run
-    .withSuccessHandler(function(d) {
-      if (!d) return;
-      appData = d;
-      try { localStorage.setItem('maichin_dashCache', JSON.stringify(d)); } catch(e) {}
-      renderDashboard(d);
-    })
-    .withFailureHandler(function(e) {
-      if (!appData || !appData.profile) {
-        showToast('⚠️ ' + (e.message || 'Грешка при зареждане на данните'));
-      }
-    })
-    .getDashboardData();
+  google.script.run.withSuccessHandler(function (d) {
+    appData = d || {};
+    if (!d || !d.profile || !d.profile['Име на бебето']) { hideSplash(); renderDashboard(d || {}); return; }
+    renderDashboard(d); hideSplash();
+  }).withFailureHandler(function (e) { hideSplash(); showToast('⚠️ ' + e.message); }).getDashboardData();
 }
 
 function renderDashboard(data) {
@@ -1526,7 +1479,7 @@ function loadVaccines() {
   if (_busyHealth) return;
   _busyHealth = true;
   var el = document.getElementById('vaccineList'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>';
-  google.script.run.withSuccessHandler(function(data){ _busyHealth = false; renderVaccines(data); }).withFailureHandler(function(e){ _busyHealth = false; _sectionError('vaccineList', e.message); }).getHealth();
+  google.script.run.withSuccessHandler(function(data){ _busyHealth = false; renderVaccines(data); }).withFailureHandler(function(e){ _busyHealth = false; showToast('⚠️ '+e.message); }).getHealth();
 }
 
 function renderVaccines(data) {
@@ -1603,7 +1556,7 @@ function deleteVaccineRecordConfirm(name) {
   google.script.run.withSuccessHandler(function(r){ if (r && r.success) { closeModal('form'); showToast('✅ Изтрито'); loadVaccines(); loadDashboard(); } else showToast('⚠️ ' + (r && r.error ? r.error : 'Грешка')); }).withFailureHandler(function(e){ showToast('⚠️ ' + e.message); }).deleteVaccineByName(name);
 }
 
-function loadAllergies() { var el = document.getElementById('allergyList'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>'; google.script.run.withSuccessHandler(renderAllergies).withFailureHandler(function(e){_sectionError('allergyList', e.message);}).getAllergies(); }
+function loadAllergies() { var el = document.getElementById('allergyList'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>'; google.script.run.withSuccessHandler(renderAllergies).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getAllergies(); }
 
 function renderAllergies(data) {
   var el = document.getElementById('allergyList'); if (!el) return;
@@ -1622,7 +1575,7 @@ function loadCheckups() {
   if (_busyHealth) return;
   _busyHealth = true;
   var el = document.getElementById('checkupList'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>';
-  google.script.run.withSuccessHandler(function(data){ _busyHealth = false; renderCheckups(data); }).withFailureHandler(function(e){ _busyHealth = false; _sectionError('checkupList', e.message); }).getCheckups();
+  google.script.run.withSuccessHandler(function(data){ _busyHealth = false; renderCheckups(data); }).withFailureHandler(function(e){ _busyHealth = false; showToast('⚠️ '+e.message); }).getCheckups();
 }
 
 function renderCheckups(data) {
@@ -1754,7 +1707,7 @@ function confirmBulkMark() {
   }).withFailureHandler(function(e){ if (btn) { btn.disabled = false; btn.innerHTML = getBulkConfirmLabel(); } if (cancelBtn) cancelBtn.disabled = false; showToast('⚠️ ' + e.message); })[fnName](items);
 }
 
-function loadIllnesses() { var el = document.getElementById('illnessList'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>'; google.script.run.withSuccessHandler(renderIllnesses).withFailureHandler(function(e){_sectionError('illnessList', e.message);}).getIllnesses(); }
+function loadIllnesses() { var el = document.getElementById('illnessList'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>'; google.script.run.withSuccessHandler(renderIllnesses).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getIllnesses(); }
 
 function renderIllnesses(data) {
   var el = document.getElementById('illnessList'); if (!el) return;
@@ -1786,7 +1739,7 @@ function renderIllnessCard(i, isActive) {
 function markIllnessRecovered(id) { var dateEnd = prompt('Дата на оздравяване (ГГГГ-ММ-ДД):', today()); if (!dateEnd) return; google.script.run.withSuccessHandler(function(r){ if(r&&r.success){showToast('✅ Записано');loadIllnesses();loadDashboard();} else showToast('⚠️ '+(r.error||'Грешка')); }).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).updateIllness(id, {dateEnd: dateEnd}); }
 function deleteIllnessConfirm(id) { if (!confirm('Изтрий това заболяване?')) return; google.script.run.withSuccessHandler(function(r){ if(r&&r.success){showToast('✅ Изтрито');loadIllnesses();loadDashboard();} else showToast('⚠️ '+(r.error||'Грешка')); }).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).deleteIllness(id); }
 
-function loadTeeth() { var el = document.getElementById('teethView'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>'; google.script.run.withSuccessHandler(renderTeeth).withFailureHandler(function(e){_sectionError('teethView', e.message);}).getTeeth(); }
+function loadTeeth() { var el = document.getElementById('teethView'); if (el) el.innerHTML = '<div class="text-center mt-16"><span class="spinner"></span></div>'; google.script.run.withSuccessHandler(renderTeeth).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getTeeth(); }
 
 function renderTeeth(data) {
   cachedTeeth = data || [];
@@ -1863,24 +1816,24 @@ function saveToothForm(toothId) {
   google.script.run.withSuccessHandler(function(r){ setLoading(btn,false); if(r&&r.success){document.getElementById('toothModal').style.display='none';showToast('✅ Записано');loadTeeth();} else showToast('⚠️ '+(r.error||'Грешка')); }).withFailureHandler(function(e){setLoading(btn,false);showToast('⚠️ '+e.message);}).saveTooth(data);
 }
 
-function loadMilestones() { var el=document.getElementById('milestonesList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedMilestones=d||[];renderMilestones(cachedMilestones);}).withFailureHandler(function(e){_sectionError('milestonesList', e.message);}).getMilestones(); }
+function loadMilestones() { var el=document.getElementById('milestonesList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedMilestones=d||[];renderMilestones(cachedMilestones);}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getMilestones(); }
 function renderMilestones(data, sortBy, filterBy) { var el=document.getElementById('milestonesList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">⭐</div><div class="empty-state-text">Още няма постижения</div><button class="empty-state-btn" onclick="openModal(\'achievement\')">+ Добави</button></div>';return;}var filtered=data;var fv=filterBy||currentFilters['milestones']||'all';if(fv&&fv!=='all')filtered=data.filter(function(m){return m.category===fv;});var sv=sortBy||currentSorts['milestones']||'date-new';var sorted=sortData(filtered,sv);var tb=getSortFilterHTML('milestones',{sorts:[{value:'date-new',label:'📅 Най-нови',default:true},{value:'date-old',label:'📅 Най-стари'},{value:'name-az',label:'🔤 По име'},{value:'category',label:'📂 По категория'}],filters:[{value:'all',label:'Всички'},{value:'Двигателни',label:'🏃 Двигателни'},{value:'Говор',label:'🗣️ Говор'},{value:'Зъби',label:'🦷 Зъби'},{value:'Хранене',label:'🍽️ Хранене'},{value:'Социални',label:'👋 Социални'},{value:'Специални',label:'✨ Специални'}]},sv,fv);el.innerHTML=tb+sorted.map(function(m){return '<div class="milestone-card" onclick="openMilestoneDetail('+m._rowIndex+')"><div class="mc-cat">'+esc(m.category)+'</div><div class="mc-event">'+esc(m.event)+'</div><div class="mc-date">📅 '+esc(m.date)+'</div>'+(m.description?'<div class="mc-desc">'+esc(m.description)+'</div>':'')+'</div>';}).join(''); }
 function openMilestoneDetail(rowIdx){ var m=cachedMilestones.filter(function(x){return x._rowIndex===rowIdx;})[0];if(!m)return;var html='<div style="font-size:0.72rem;color:var(--pink-d);font-weight:600;text-transform:uppercase">'+esc(m.category)+'</div><h3 style="font-family:Playfair Display,serif;margin:6px 0">'+esc(m.event)+'</h3><div style="font-size:0.82rem;color:var(--text-s)">📅 '+esc(m.date)+'</div>'+(m.description?'<p style="margin:10px 0;font-size:0.9rem;line-height:1.5">'+esc(m.description)+'</p>':'')+(m.photo?'<img src="'+m.photo+'" style="width:100%;max-height:50vh;object-fit:contain;border-radius:var(--r-s);margin:10px 0" onerror="this.style.display=\'none\'">':'')+'<button class="save-btn" style="background:var(--red);margin-top:16px" onclick="deleteEntryConfirm(\'Постижения\','+rowIdx+',\'milestones\')">🗑️ Изтрий</button>';document.getElementById('formModalTitle').textContent='Постижение ⭐';document.getElementById('formModalBody').innerHTML=html;document.getElementById('formModal').style.display='flex'; }
 
-function loadGrowth(){var el=document.getElementById('growthList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedGrowth=d||[];renderGrowth(cachedGrowth);}).withFailureHandler(function(e){_sectionError('growthList', e.message);}).getGrowth();}
+function loadGrowth(){var el=document.getElementById('growthList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedGrowth=d||[];renderGrowth(cachedGrowth);}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getGrowth();}
 function renderGrowth(data,sortBy){var el=document.getElementById('growthList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">📏</div><div class="empty-state-text">Няма измервания</div><button class="empty-state-btn" onclick="openModal(\'growth\')">+ Добави</button></div>';return;}var sv=sortBy||currentSorts['growth']||'date-new';var sorted=sortData(data,sv);var tb=getSortFilterHTML('growth',{sorts:[{value:'date-new',label:'📅 Най-нови',default:true},{value:'date-old',label:'📅 Най-стари'}]},sv);el.innerHTML=tb+sorted.map(function(g){return '<div class="growth-card"><div class="growth-date">'+esc(g.date)+'</div><div class="growth-stats">'+(g.weight?'<div class="growth-stat"><span class="growth-val">'+esc(g.weight)+'</span><span class="growth-unit">кг</span></div>':'')+(g.height?'<div class="growth-stat"><span class="growth-val">'+esc(g.height)+'</span><span class="growth-unit">см</span></div>':'')+(g.head?'<div class="growth-stat"><span class="growth-val">'+esc(g.head)+'</span><span class="growth-unit">глава</span></div>':'')+'</div><button class="note-delete" onclick="event.stopPropagation();deleteEntryConfirm(\'Растеж\','+g._rowIndex+',\'growth\')" title="Изтрий">🗑️</button></div>';}).join('');}
 
-function loadMemories(){var el=document.getElementById('memoriesList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedMemories=d||[];renderMemories(cachedMemories);}).withFailureHandler(function(e){_sectionError('memoriesList', e.message);}).getMemories();}
+function loadMemories(){var el=document.getElementById('memoriesList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedMemories=d||[];renderMemories(cachedMemories);}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getMemories();}
 function renderMemories(data,sortBy){var el=document.getElementById('memoriesList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">📸</div><div class="empty-state-text">Запази първия спомен</div><button class="empty-state-btn" onclick="openModal(\'memory\')">+ Нов спомен</button></div>';return;}var sorted=sortData(data,sortBy||currentSorts['memories']||'date-new');var tb=getSortFilterHTML('memories',{sorts:[{value:'date-new',label:'📅 Най-нови',default:true},{value:'date-old',label:'📅 Най-стари'},{value:'name-az',label:'🔤 По заглавие'},{value:'category',label:'📂 По категория'}]},sortBy||currentSorts['memories']);el.innerHTML=tb+sorted.map(function(m,idx){var ph=m.photo?'<img class="memory-photo" src="'+m.photo+'" loading="lazy" onerror="this.style.display=\'none\'">':'<div class="memory-photo-placeholder">📸</div>';return '<div class="memory-card" onclick="openMemoryDetail('+idx+')">'+ph+'<div class="memory-body"><div class="memory-card-title">'+esc(m.title)+'</div><div class="memory-card-date">📅 '+esc(m.date)+(m.category?' · '+esc(m.category):'')+'</div>'+(m.description?'<div class="memory-card-desc">'+esc(m.description)+'</div>':'')+'</div></div>';}).join('');}
 function openMemoryDetail(idx){var m=cachedMemories[idx];if(!m)return;var html=(m.photo?'<img src="'+m.photo+'" style="width:100%;max-height:60vh;object-fit:contain;border-radius:var(--r-s);background:#000" onerror="this.style.display=\'none\'">':'')+'<h3 style="font-family:Playfair Display,serif;margin:12px 0 4px">'+esc(m.title)+'</h3><div style="font-size:0.82rem;color:var(--text-s)">📅 '+esc(m.date)+(m.category?' · '+esc(m.category):'')+'</div>'+(m.description?'<p style="margin:10px 0;font-size:0.9rem;line-height:1.5">'+esc(m.description)+'</p>':'')+'<button class="save-btn" style="background:var(--red);margin-top:16px" onclick="deleteEntryConfirm(\'Спомени\','+m._rowIndex+',\'memories\')">🗑️ Изтрий</button>';document.getElementById('formModalTitle').textContent='Спомен 📸';document.getElementById('formModalBody').innerHTML=html;document.getElementById('formModal').style.display='flex';}
 
 function deleteEntryConfirm(sheetName,rowIndex,reloadSection){if(!confirm('Сигурна ли си?'))return;showToast('🗑️ Изтривам...');google.script.run.withSuccessHandler(function(r){if(r&&r.success){closeModal('form');showToast('✅ Изтрито!');var loaders={milestones:loadMilestones,memories:loadMemories,feeding:loadFeeding,growth:loadGrowth,doctors:loadDoctors};if(loaders[reloadSection])loaders[reloadSection]();loadDashboard();}else showToast('⚠️ '+(r.error||'Грешка'));}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).deleteEntry(sheetName,rowIndex);}
 
-function loadFeeding(){var el=document.getElementById('feedingList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedFeeding=d||[];renderFeeding(cachedFeeding);}).withFailureHandler(function(e){_sectionError('feedingList', e.message);}).getFeeding();}
+function loadFeeding(){var el=document.getElementById('feedingList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedFeeding=d||[];renderFeeding(cachedFeeding);}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getFeeding();}
 function renderFeeding(data,sortBy,filterBy){var el=document.getElementById('feedingList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">🥣</div><div class="empty-state-text">Проследявай кои храни сте опитали</div><button class="empty-state-btn" onclick="openModal(\'feeding\')">+ Нова храна</button></div>';return;}var fv=filterBy||currentFilters['feeding']||'all';var filtered=data;if(fv==='allergy')filtered=data.filter(function(f){return f.allergy==='Да';});else if(fv==='liked')filtered=data.filter(function(f){return(f.reaction||'').indexOf('Хареса')!==-1;});var sv=sortBy||currentSorts['feeding']||'date-new';var sorted=sortData(filtered,sv);var emojis={'зеленчук':'🥦','морков':'🥕','картоф':'🥔','плод':'🍎','ябълк':'🍎','банан':'🍌','ягод':'🍓','каша':'🍚','ориз':'🍚','месо':'🍗','пиле':'🍗','яйце':'🥚','риба':'🐟','мляко':'🍼','кисело':'🥛','хляб':'🍞','бисквит':'🍪'};var tb=getSortFilterHTML('feeding',{sorts:[{value:'date-new',label:'📅 Най-нови',default:true},{value:'date-old',label:'📅 Най-стари'},{value:'name-az',label:'🔤 По име'}],filters:[{value:'all',label:'Всички'},{value:'allergy',label:'⚠️ Алергии'},{value:'liked',label:'😊 Харесани'}]},sv,fv);el.innerHTML=tb+sorted.map(function(f){var em='🥣',fl=(f.food||'').toLowerCase(),ek=Object.keys(emojis);for(var i=0;i<ek.length;i++){if(fl.indexOf(ek[i])!==-1){em=emojis[ek[i]];break;}}var ab=(f.allergy==='Да')?'<span class="feeding-allergy">⚠️ Алергия</span>':'';return '<div class="feeding-item"><span class="feeding-emoji">'+em+'</span><div class="feeding-info"><div class="feeding-name">'+esc(f.food)+'</div><div class="feeding-reaction">'+esc(f.reaction||'')+'</div>'+ab+'</div><div class="feeding-date">'+esc(f.date)+'</div><button class="note-delete" onclick="event.stopPropagation();deleteEntryConfirm(\'Хранене\','+f._rowIndex+',\'feeding\')" title="Изтрий">🗑️</button></div>';}).join('');}
 
-function loadDoctors(){var el=document.getElementById('doctorsList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedDoctors=d||[];renderDoctors(cachedDoctors);}).withFailureHandler(function(e){_sectionError('doctorsList', e.message);}).getDoctors();}
-function renderDoctors(data,sortBy){var el=document.getElementById('doctorsList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">👩‍⚕️</div><div class="empty-state-text">Добави лекарите на детето</div><button class="empty-state-btn" onclick="openModal(\'doctor\')">+ Нов лекар</button></div>';return;}var sorted=sortData(data,sortBy||'category');var tb=getSortFilterHTML('doctors',{sorts:[{value:'category',label:'📂 По специалност',default:true},{value:'name-az',label:'🔤 По име'}]});var icons={'Педиатър':'👶','Ортопед':'🦴','Офталмолог':'👁️','Невролог':'🧠','Дерматолог':'🌿','УНГ':'👂','Кардиолог':'❤️','Алерголог':'🤧','Хирург':'🔬'};el.innerHTML=tb+sorted.map(function(d){var ic='👩‍⚕️',sk=Object.keys(icons);for(var i=0;i<sk.length;i++){if((d.specialty||'').indexOf(sk[i])!==-1){ic=icons[sk[i]];break;}}var pb=d.phone?'<a href="tel:'+esc(d.phone)+'" class="doctor-call-btn">📞</a>':'';return '<div class="doctor-card"><div class="doctor-avatar">'+ic+'</div><div class="doctor-info"><div class="doctor-specialty">'+esc(d.specialty)+'</div><div class="doctor-name">'+esc(d.name)+'</div>'+(d.phone?'<div class="doctor-phone">'+esc(d.phone)+'</div>':'')+(d.address?'<div class="doctor-address">📍 '+esc(d.address)+'</div>':'')+'</div>'+pb+'</div>';}).join('');}
+function loadDoctors(){var el=document.getElementById('doctorsList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(function(d){cachedDoctors=d||[];renderDoctors(cachedDoctors);}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getDoctors();}
+function renderDoctors(data,sortBy){var el=document.getElementById('doctorsList');if(!el)return;if(!data||!data.length){el.innerHTML='<div class="empty-state"><div class="empty-state-icon">👩‍⚕️</div><div class="empty-state-text">Добави лекарите на бебето</div><button class="empty-state-btn" onclick="openModal(\'doctor\')">+ Нов лекар</button></div>';return;}var sorted=sortData(data,sortBy||'category');var tb=getSortFilterHTML('doctors',{sorts:[{value:'category',label:'📂 По специалност',default:true},{value:'name-az',label:'🔤 По име'}]});var icons={'Педиатър':'👶','Ортопед':'🦴','Офталмолог':'👁️','Невролог':'🧠','Дерматолог':'🌿','УНГ':'👂','Кардиолог':'❤️','Алерголог':'🤧','Хирург':'🔬'};el.innerHTML=tb+sorted.map(function(d){var ic='👩‍⚕️',sk=Object.keys(icons);for(var i=0;i<sk.length;i++){if((d.specialty||'').indexOf(sk[i])!==-1){ic=icons[sk[i]];break;}}var pb=d.phone?'<a href="tel:'+esc(d.phone)+'" class="doctor-call-btn">📞</a>':'';return '<div class="doctor-card"><div class="doctor-avatar">'+ic+'</div><div class="doctor-info"><div class="doctor-specialty">'+esc(d.specialty)+'</div><div class="doctor-name">'+esc(d.name)+'</div>'+(d.phone?'<div class="doctor-phone">'+esc(d.phone)+'</div>':'')+(d.address?'<div class="doctor-address">📍 '+esc(d.address)+'</div>':'')+'</div>'+pb+'</div>';}).join('');}
 
 function loadProfile(){
   google.script.run.withSuccessHandler(function(d){
@@ -1889,51 +1842,8 @@ function loadProfile(){
     Object.keys(f).forEach(function(id){var el=document.getElementById(id);var val=d[f[id]];if(el&&val)el.value=(el.type==='date')?formatDateForInput(val):val;});
     if(!d['Педиатър име']&&d['Лекуващ педиатър']){var pn=document.getElementById('pPedName');if(pn&&!pn.value)pn.value=d['Лекуващ педиатър'];}
     var photoUrl=d['Снимка'];
-    var localPhoto=localStorage.getItem('maichin_profilePhoto');
-    var displayPhoto=localPhoto||photoUrl;
-    if(displayPhoto){document.getElementById('pPhoto').value=photoUrl||'';var img=document.getElementById('profilePhotoImg');img.src=displayPhoto;img.style.display='block';document.getElementById('profilePhotoPlaceholder').style.display='none';}
-    renderProfileCard(d, displayPhoto);
-  }).withFailureHandler(function(e){showToast('⚠️ ' + (e.message || 'Грешка при зареждане на профила'));}).getProfile();
-}
-
-function renderProfileCard(d, photoSrc) {
-  var name = d['Име на бебето'];
-  if (!name) return;
-  var card = document.getElementById('profileCard');
-  var editForm = document.getElementById('profileEditForm');
-  // Снимка
-  var photoEl = document.getElementById('profileCardPhoto');
-  if (photoSrc) { photoEl.innerHTML = '<img src="'+photoSrc+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">'; }
-  // Основни данни
-  document.getElementById('profileCardName').textContent = name;
-  var birth = d['Дата на раждане'];
-  var ageStr = '';
-  if (birth) {
-    try {
-      var bd = new Date(birth); var now = new Date(); var months = (now.getFullYear()-bd.getFullYear())*12+(now.getMonth()-bd.getMonth());
-      ageStr = months < 1 ? 'Новородено' : months < 24 ? months+' месеца' : Math.floor(months/12)+' год. '+months%12+' мес.';
-    } catch(e){}
-  }
-  document.getElementById('profileCardAge').textContent = ageStr || 'Въведи дата на раждане';
-  // Детайли
-  var details = [];
-  if (birth) details.push({icon:'🎂',label:'Роден/а',val:birth.split('-').reverse().join('.')});
-  if (d['Пол']) details.push({icon:'👶',label:'Пол',val:d['Пол']});
-  if (d['Кръвна група']) details.push({icon:'🩸',label:'Кръвна',val:d['Кръвна група']});
-  if (d['Тегло при раждане (кг)']) details.push({icon:'⚖️',label:'Тегло при раждане',val:d['Тегло при раждане (кг)']+' кг'});
-  if (d['Ръст при раждане (см)']) details.push({icon:'📏',label:'Ръст при раждане',val:d['Ръст при раждане (см)']+' см'});
-  if (d['Болница']) details.push({icon:'🏥',label:'Болница',val:d['Болница']});
-  if (d['Доктор при раждане']) details.push({icon:'👨‍⚕️',label:'Д-р при раждане',val:d['Доктор при раждане']});
-  if (d['Педиатър име']) details.push({icon:'🩺',label:'Педиатър',val:d['Педиатър име']+(d['Педиатър телефон']?' · '+d['Педиатър телефон']:'')});
-  if (d['Иtme на майката']) details.push({icon:'👩',label:'Мама',val:d['Иtme на майката']});
-  if (d['Иtme на таткото']) details.push({icon:'👨',label:'Тато',val:d['Иtme на таткото']});
-  document.getElementById('profileCardDetails').innerHTML = details.map(function(item){
-    return '<div style="background:rgba(255,255,255,0.7);border-radius:8px;padding:7px 10px"><div style="color:#aaa;font-size:0.72rem">'+item.icon+' '+item.label+'</div><div style="font-weight:600;color:var(--text);margin-top:2px">'+esc(item.val)+'</div></div>';
-  }).join('');
-  // Sheets линк
-  google.script.run.withSuccessHandler(function(r){
-  card.style.display='block';
-  editForm.style.display='none';
+    if(photoUrl){document.getElementById('pPhoto').value=photoUrl;var img=document.getElementById('profilePhotoImg');img.src=photoUrl;img.style.display='block';document.getElementById('profilePhotoPlaceholder').style.display='none';}
+  }).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getProfile();
 }
 
 function saveProfileForm(){
@@ -2024,12 +1934,12 @@ function getPhotoValue(id){if(pendingPhotoData&&pendingPhotoData.fieldId===id)re
 function triggerCamera(id){var i=document.getElementById(id+'_camera');if(i)i.click();}
 function triggerGallery(id){var i=document.getElementById(id+'_file');if(i)i.click();}
 function toggleUrlInput(id){var w=document.getElementById(id+'_url_wrap');if(w)w.classList.toggle('visible');}
-function handleFileSelect(ev,id){var file=ev.target.files[0];if(!file)return;if(!file.type.startsWith('image/')){showToast('⚠️ Избери снимка');return;}if(file.size>10*1024*1024){showToast('⚠️ Макс. 10MB');return;}var area=document.getElementById(id+'_area');if(area){area.classList.add('has-photo');area.innerHTML='<div class="photo-uploading"><span class="spinner"></span> Зареждам...</div>';}compressImage(file,function(b64,mime){var _sectionPrefixes={'f_photo':'achievement','f_mphoto':'memory','f_nphoto':'note'};var _fp=_sectionPrefixes[id]||'photo';pendingPhotoData={fieldId:id,base64:b64,fileName:_fp+'_'+Date.now()+'.jpg',mimeType:mime||'image/jpeg'};if(area)area.innerHTML='<img class="photo-upload-preview" src="data:'+mime+';base64,'+b64+'"><button type="button" class="photo-remove-btn" onclick="removePhoto(\''+id+'\',event)">✕</button>';});}
+function handleFileSelect(ev,id){var file=ev.target.files[0];if(!file)return;if(!file.type.startsWith('image/')){showToast('⚠️ Избери снимка');return;}if(file.size>10*1024*1024){showToast('⚠️ Макс. 10MB');return;}var area=document.getElementById(id+'_area');if(area){area.classList.add('has-photo');area.innerHTML='<div class="photo-uploading"><span class="spinner"></span> Зареждам...</div>';}compressImage(file,function(b64,mime){pendingPhotoData={fieldId:id,base64:b64,fileName:'photo_'+Date.now()+'.jpg',mimeType:mime||'image/jpeg'};if(area)area.innerHTML='<img class="photo-upload-preview" src="data:'+mime+';base64,'+b64+'"><button type="button" class="photo-remove-btn" onclick="removePhoto(\''+id+'\',event)">✕</button>';});}
 function compressImage(file,cb){var r=new FileReader();r.onload=function(e){var img=new Image();img.onload=function(){var c=document.createElement('canvas'),mx=1200,w=img.width,h=img.height;if(w>mx||h>mx){if(w>h){h=Math.round(h*mx/w);w=mx;}else{w=Math.round(w*mx/h);h=mx;}}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);var d=c.toDataURL('image/jpeg',0.8);cb(d.split(',')[1],'image/jpeg');};img.src=e.target.result;};r.readAsDataURL(file);}
 function removePhoto(id,ev){if(ev)ev.stopPropagation();pendingPhotoData=null;var area=document.getElementById(id+'_area');if(area){area.classList.remove('has-photo');area.innerHTML='<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Натисни за снимка</div><div class="photo-upload-hint">Камера, галерия или линк</div>';}['_file','_camera'].forEach(function(s){var i=document.getElementById(id+s);if(i)i.value='';});}
 
 let voiceRecognition = null; let isRecording = false;
-function loadNotes(){var el=document.getElementById('notesActiveList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(renderNotes).withFailureHandler(function(e){_sectionError('notesActiveList', e.message);}).getNotes();}
+function loadNotes(){var el=document.getElementById('notesActiveList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(renderNotes).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getNotes();}
 function renderNotes(data){if(!data)return;var activeEl=document.getElementById('notesActiveList');var doneEl=document.getElementById('notesDoneList');if(activeEl){if(data.active&&data.active.length){activeEl.innerHTML=data.active.map(function(n){return renderNoteCard(n,false);}).join('');}else{activeEl.innerHTML='<div class="empty-state"><div class="empty-state-icon">📝</div><div class="empty-state-text">Няма активни бележки</div></div>';}}if(doneEl){if(data.done&&data.done.length){doneEl.innerHTML=data.done.map(function(n){return renderNoteCard(n,true);}).join('');}else{doneEl.innerHTML='<div class="empty-state"><div class="empty-state-text">Няма завършени бележки</div></div>';}}var badge=document.getElementById('navNotesBadge');if(badge){if(data.active&&data.active.length>0){badge.textContent=data.active.length;badge.style.display='flex';}else badge.style.display='none';}}
 function renderNoteCard(n,isDone){var prioCls=n.priority==='Високо'?'prio-high':n.priority==='Ниско'?'prio-low':'prio-medium';var prioLabel=n.priority==='Високо'?'high':n.priority==='Ниско'?'low':'medium';var photoHtml=n.photo?'<img class="note-photo" src="'+esc(n.photo)+'" loading="lazy" onerror="this.style.display=\'none\'">':'';return '<div class="note-card '+(isDone?'done ':'')+prioCls+'"><button class="note-check '+(isDone?'checked':'')+'" onclick="toggleNote(\''+esc(n.id)+'\')">'+(isDone?'✓':'')+'</button><div class="note-body"><div class="note-text">'+esc(n.text)+'</div><div class="note-meta"><span class="note-date">'+esc(n.date)+'</span><span class="note-prio-badge '+prioLabel+'">'+esc(n.priority||'Средно')+'</span></div></div>'+photoHtml+'<button class="note-delete" onclick="deleteNoteConfirm(\''+esc(n.id)+'\')">🗑️</button></div>';}
 function quickAddNote(){var input=document.getElementById('quickNoteInput');var text=input.value.trim();if(!text){showToast('⚠️ Напиши бележка');return;}input.value='';showToast('📝 Записвам...');google.script.run.withSuccessHandler(function(r){if(r&&r.success){showToast('✅ Записано!');loadNotes();loadDashboard();}else showToast('⚠️ '+(r.error||'Грешка'));}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).addNote({text:text,priority:'Средно'});}
