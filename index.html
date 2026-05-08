@@ -1014,7 +1014,8 @@ function handleLogin(response) {
 
   callApi('init', { country: navigator.language || '' }, currentToken)
     .then(function() {
-      document.getElementById('loginScreen').style.display = 'none';
+      var ls = document.getElementById('loginScreen');
+      if (ls) ls.remove();
       document.getElementById('app').style.display = 'block';
       try {
         var c = localStorage.getItem('maichin_dashCache');
