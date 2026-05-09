@@ -12,6 +12,9 @@
 **Последен работещ Commit:** `a9657cf` (9 май 2026)
 **Branch:** `claude/read-claude-docs-gHaua`
 **GAS URL:** `https://script.google.com/macros/s/AKfycbz5NkiH4UIOa_pMIzSnMc_z3ll1VHHyoDmLLcK38b1ERkROQ2I-pHiQjGA8NHr1sfWl/exec`
+**GAS Deployment:** Име "n" | Версия 89 | Деплойнато на 6.05.2026 в 13:25
+**GAS Deployment ID:** `AKfycbz5NkiH4UIOa_pMIzSnMc_z3ll1VHHyoDmLLcK38b1ERkROQ2I-pHiQjGA8NHr1sfWl`
+**GAS Script URL:** `https://script.google.com/home/projects/1HNzzNl4UnUR_IKtEvzzq2DTbe0-lNnaSWJNJELCyY9P_O1r6BnPoHXkM/edit`
 
 **Какво работи:** Логин, dashboard, всички секции (ваксини, спомени, растеж и т.н.), качване на снимки в Google Drive, показване на снимки в картите на спомените.
 
