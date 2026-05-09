@@ -1201,7 +1201,7 @@ function uploadDirectToDrive(base64Data, fileName, mimeType, onDone, subfolder) 
           headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: 'reader', type: 'anyone' })
         }).then(function() {
-          var url = 'https://drive.google.com/uc?export=view&id=' + file.id;
+          var url = 'https://lh3.googleusercontent.com/d/' + file.id;
           onDone({ success: true, url: url, fileId: file.id });
         });
       })
