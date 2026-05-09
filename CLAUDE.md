@@ -9,19 +9,19 @@
 
 # ⚠️ РАБОТЕЩА ВЕРСИЯ — НИКОГА НЕ ТРИЙ БЕЗ СЪГЛАСИЕ
 
-**Последен работещ Commit:** `a9657cf` (9 май 2026)
+**Последен работещ Commit:** `91d9215` (9 май 2026)
 **Branch:** `claude/read-claude-docs-gHaua`
 **GAS URL:** `https://script.google.com/macros/s/AKfycbz5NkiH4UIOa_pMIzSnMc_z3ll1VHHyoDmLLcK38b1ERkROQ2I-pHiQjGA8NHr1sfWl/exec`
 **GAS Deployment:** Име "n" | Версия 89 | Деплойнато на 6.05.2026 в 13:25
 **GAS Deployment ID:** `AKfycbz5NkiH4UIOa_pMIzSnMc_z3ll1VHHyoDmLLcK38b1ERkROQ2I-pHiQjGA8NHr1sfWl`
 **GAS Script URL:** `https://script.google.com/home/projects/1HNzzNl4UnUR_IKtEvzzq2DTbe0-lNnaSWJNJELCyY9P_O1r6BnPoHXkM/edit`
 
-**Какво работи:** Логин, dashboard, всички секции (ваксини, спомени, растеж и т.н.), качване на снимки в Google Drive, показване на снимки в картите на спомените.
+**Какво работи:** Логин, dashboard, всички секции (ваксини, спомени, растеж и т.н.), качване на снимки в Google Drive, показване на снимки в картите на спомените, автоматичен вход при повторно отваряне на PWA (без нужда от логин всеки път).
 
 **Ако нещо се счупи — как да върнем:**
 ```
 git checkout claude/read-claude-docs-gHaua
-git checkout a9657cf -- index.html
+git checkout 91d9215 -- index.html
 git commit -m "Връща работещата версия"
 git push -u origin claude/read-claude-docs-gHaua
 ```
@@ -92,7 +92,7 @@ GAS верифицира токена, създава таблица в Drive н
 - **Publishing status:** In production (unverified — верификацията предстои)
 
 ## Google Apps Script:
-- **Текущ deploy URL:** `https://script.google.com/macros/s/AKfycbwL8kqfvDvuty5vsPnzvxF0l0v-ggmvWLeNH3w45O_BDnTS7HZxGnx1u8R-TOC0UKL96A/exec`
+- **Текущ deploy URL:** `https://script.google.com/macros/s/AKfycbz5NkiH4UIOa_pMIzSnMc_z3ll1VHHyoDmLLcK38b1ERkROQ2I-pHiQjGA8NHr1sfWl/exec`
 - **Execute as:** Me (разработчикът)
 - **Who has access:** Anyone (без Google акаунт)
 - **ВАЖНО:** При всяка промяна в code.gs трябва нов deploy (New deployment) — URL-ът се сменя и трябва да се обнови в index.html
@@ -178,14 +178,15 @@ callApi('getProfile', {}, idToken).then(function(profile) { ... });
 | 1 | Google Cloud проект + OAuth + Admin Sheet | ✅ Готово |
 | 2 | GitHub Pages логин страница | ✅ Готово |
 | 3 | GAS API слой + JSONP комуникация | ✅ Готово |
-| 4 | Мигриране на Dashboard екрана | ⬜ Следващо |
-| 5 | Мигриране на всички секции (Здраве, Растеж и т.н.) | ⬜ Предстои |
-| 6 | Аналитика + географски данни | ⬜ Предстои |
-| 7 | PWA манифест + икони + "Добави на начален екран" | ⬜ Предстои |
-| 8 | UI полиране + финален тест на iPhone | ⬜ Предстои |
-| 9 | Privacy Policy страница | ⬜ Предстои |
-| 10 | Google верификация (кандидатстване) | ⬜ Предстои |
-| 11 | Stripe интеграция | ⬜ Предстои |
+| 4 | Автоматичен вход при повторно отваряне (PWA сесия) | ✅ Готово |
+| 5 | Данните на майките да са в ТЕХНИЯ Drive (не в нашия) | 🔜 Следващо — нужно за Google верификация |
+| 6 | Мигриране на всички секции (Здраве, Растеж и т.н.) | ⬜ Предстои |
+| 7 | Аналитика + географски данни | ⬜ Предстои |
+| 8 | PWA манифест + икони + "Добави на начален екран" | ⬜ Предстои |
+| 9 | UI полиране + финален тест на iPhone | ⬜ Предстои |
+| 10 | Privacy Policy страница | ⬜ Предстои |
+| 11 | Google верификация (кандидатстване) | ⬜ Предстои |
+| 12 | Stripe интеграция | ⬜ Предстои |
 
 ---
 
@@ -206,3 +207,22 @@ callApi('getProfile', {}, idToken).then(function(profile) { ... });
 - `response_type=id_token` implicit flow е deprecated от Google — не го ползваме
 - CORS блокира fetch/POST от GitHub Pages към GAS — затова ползваме JSONP
 - При промяна на code.gs ЗАДЪЛЖИТЕЛНО нов GAS deploy + обновяване на URL в index.html
+- Гласовите бележки (микрофон) са премахнати — Web Speech API не работи в PWA режим на iPhone
+- Токенът на сесията се пази в localStorage — автоматичен вход при повторно отваряне на приложението
+- ⚠️ Таблиците на майките се създават в Drive-а на РАЗРАБОТЧИКА (не в техния) — предстои оправяне, нужно за Google верификация
+
+---
+
+# 10. АРХИТЕКТУРЕН ПРОБЛЕМ — ДАННИТЕ В НАШИЯ DRIVE (ПРЕДСТОИ)
+
+**Проблем:** `SpreadsheetApp.create()` в GAS създава таблицата в Drive-а на разработчика. Майките са добавени като редактори, но данните физически стоят при нас.
+
+**Защо трябва да се оправи:**
+- Чувствителна информация за деца не трябва да е в нашия акаунт
+- Google изисква данните да са в акаунта на потребителя за верификация
+- При много потребителки Drive-ът на разработчика се напълва
+
+**Правилното решение:**
+При логин да се поискат `drive.file` + `spreadsheets` scopes → майката дава разрешение веднъж → таблицата и снимките се създават в НЕЙНИЯ Drive.
+
+**⚠️ ВНИМАНИЕ:** Предишен опит да се добавят scopes счупи логина за 10 дни. Трябва да се планира и тества много внимателно.
