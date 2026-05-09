@@ -968,7 +968,21 @@ function callApi(action, data, token) {
     window[cbName] = function(response) {
       cleanup();
       if (response.success) resolve(response.result);
-      else reject(new Error(response.error || 'Грешка от сървъра'));
+      else {
+        var errMsg = response.error || 'Грешка от сървъра';
+        if (errMsg.indexOf('изтекъл') !== -1 || errMsg.indexOf('Токенът') !== -1) {
+          localStorage.removeItem('maichin_token');
+          localStorage.removeItem('maichin_token_expiry');
+          currentToken = null;
+          document.getElementById('loginScreen').style.display = 'flex';
+          document.getElementById('app').style.display = 'none';
+          document.getElementById('splash').style.display = 'none';
+          showLoginStatus('error', '🔒 Сесията изтече. Моля влез отново.');
+          reject(new Error(errMsg));
+        } else {
+          reject(new Error(errMsg));
+        }
+      }
     };
     script.onerror = function() { cleanup(); reject(new Error('Неуспешна връзка с GAS')); };
     script.src = GAS_URL + '?' + params.toString();
@@ -997,6 +1011,9 @@ function handleLogin(response) {
 
   callApi('init', { country: navigator.language || '' }, currentToken)
     .then(function() {
+      var payload = parseJwt(currentToken);
+      localStorage.setItem('maichin_token', currentToken);
+      localStorage.setItem('maichin_token_expiry', (payload.exp * 1000).toString());
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('splash').style.display = 'flex';
       loadDashboard();
@@ -1006,6 +1023,18 @@ function handleLogin(response) {
       showLoginStatus('error', '❌ ' + err.message);
     });
 }
+
+function tryAutoLogin() {
+  var savedToken = localStorage.getItem('maichin_token');
+  var savedExpiry = localStorage.getItem('maichin_token_expiry');
+  if (savedToken && savedExpiry && Date.now() < parseInt(savedExpiry) - 60000) {
+    currentToken = savedToken;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('splash').style.display = 'flex';
+    loadDashboard();
+  }
+}
+tryAutoLogin();
 
 // ================================================================
 // SHIM: google.script.run → callApi (JSONP)
