@@ -932,7 +932,7 @@ img, input, select, textarea, canvas, svg, video, iframe {
   </div>
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async defer onload="tryAutoLogin()"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 'use strict';
 
@@ -1018,40 +1018,13 @@ function handleLogin(response) {
     });
 }
 
-var _autoLoginDone = false;
 function tryAutoLogin() {
-  if (_autoLoginDone) return;
-
   var savedToken = localStorage.getItem('maichin_token');
-  var savedExpiry = localStorage.getItem('maichin_token_expiry');
-
-  // Токенът е валиден — влизаме директно без логин екран
-  if (savedToken && savedExpiry && Date.now() < parseInt(savedExpiry) - 60000) {
-    _autoLoginDone = true;
-    currentToken = savedToken;
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('splash').style.display = 'flex';
-    loadDashboard();
-    return;
-  }
-
-  // Имаме предишна сесия но токенът е изтекъл — опитваме тихо подновяване
-  // Това изисква Google библиотеката да е заредена (вика се от onload)
-  if (savedToken && typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-    _autoLoginDone = true;
-    google.accounts.id.initialize({
-      client_id: '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com',
-      callback: handleLogin,
-      auto_select: true,
-      itp_support: true
-    });
-    google.accounts.id.prompt(function(notification) {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // Тихото подновяване не се получи — показваме чист логин екран
-        showLoginStatus('error', '🔒 Моля влез отново с Google.');
-      }
-    });
-  }
+  if (!savedToken) return;
+  currentToken = savedToken;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('splash').style.display = 'flex';
+  loadDashboard();
 }
 
 // ================================================================
