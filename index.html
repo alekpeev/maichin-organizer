@@ -449,11 +449,7 @@ img, input, select, textarea, canvas, svg, video, iframe {
 /* NOTES */
 .quick-note-bar { display: flex; gap: 6px; align-items: center; max-width: 100%; }
 .quick-note-bar input { flex: 1; min-width: 0; border: 1.5px solid var(--pink-l); border-radius: 20px; padding: 10px 12px; font-size: 0.88rem; font-family: 'DM Sans', sans-serif; outline: none; background: white; color: var(--text); }
-.quick-note-voice-btn, .quick-note-send-btn { width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid var(--pink-l); background: white; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; }
-.quick-note-send-btn { background: var(--pink); color: white; border: none; font-size: 1.05rem; }
-.quick-note-voice-btn.recording { background: var(--red-l); border-color: var(--red); animation: pulse 1s infinite; }
-@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-.voice-status { font-size: 0.8rem; color: var(--red); padding: 6px 0; text-align: center; }
+.quick-note-send-btn { width: 42px; height: 42px; border-radius: 50%; background: var(--pink); color: white; border: none; font-size: 1.05rem; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; }
 
 .note-card { background: white; border-radius: var(--r-s); padding: 10px 12px; box-shadow: var(--shadow-s); display: flex; align-items: flex-start; gap: 8px; border: 1px solid rgba(61,43,43,0.05); width: 100%; max-width: 100%; box-sizing: border-box; }
 .note-card.done { opacity: 0.6; }
@@ -783,10 +779,8 @@ img, input, select, textarea, canvas, svg, video, iframe {
       </div>
       <div class="quick-note-bar">
         <input type="text" id="quickNoteInput" placeholder="Бърза бележка...">
-        <button class="quick-note-voice-btn" id="voiceBtn" onclick="toggleVoiceInput()">🎤</button>
         <button class="quick-note-send-btn" onclick="quickAddNote()">➤</button>
       </div>
-      <div id="voiceStatus" class="voice-status" style="display:none"></div>
       <div class="tabs" style="margin-top:12px">
         <button class="tab active" data-tab="notes-active" onclick="switchNotesTab('active')">Активни</button>
         <button class="tab" data-tab="notes-done" onclick="switchNotesTab('done')">Завършени</button>
@@ -1993,7 +1987,7 @@ function handleFileSelect(ev,id){var file=ev.target.files[0];if(!file)return;if(
 function compressImage(file,cb){var r=new FileReader();r.onload=function(e){var img=new Image();img.onload=function(){var c=document.createElement('canvas'),mx=1200,w=img.width,h=img.height;if(w>mx||h>mx){if(w>h){h=Math.round(h*mx/w);w=mx;}else{w=Math.round(w*mx/h);h=mx;}}c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);var d=c.toDataURL('image/jpeg',0.8);cb(d.split(',')[1],'image/jpeg');};img.src=e.target.result;};r.readAsDataURL(file);}
 function removePhoto(id,ev){if(ev)ev.stopPropagation();pendingPhotoData=null;var area=document.getElementById(id+'_area');if(area){area.classList.remove('has-photo');area.innerHTML='<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Натисни за снимка</div><div class="photo-upload-hint">Камера, галерия или линк</div>';}['_file','_camera'].forEach(function(s){var i=document.getElementById(id+s);if(i)i.value='';});}
 
-let voiceRecognition = null; let isRecording = false;
+
 function loadNotes(){var el=document.getElementById('notesActiveList');if(el)el.innerHTML='<div class="text-center mt-16"><span class="spinner"></span></div>';google.script.run.withSuccessHandler(renderNotes).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).getNotes();}
 function renderNotes(data){if(!data)return;var activeEl=document.getElementById('notesActiveList');var doneEl=document.getElementById('notesDoneList');if(activeEl){if(data.active&&data.active.length){activeEl.innerHTML=data.active.map(function(n){return renderNoteCard(n,false);}).join('');}else{activeEl.innerHTML='<div class="empty-state"><div class="empty-state-icon">📝</div><div class="empty-state-text">Няма активни бележки</div></div>';}}if(doneEl){if(data.done&&data.done.length){doneEl.innerHTML=data.done.map(function(n){return renderNoteCard(n,true);}).join('');}else{doneEl.innerHTML='<div class="empty-state"><div class="empty-state-text">Няма завършени бележки</div></div>';}}var badge=document.getElementById('navNotesBadge');if(badge){if(data.active&&data.active.length>0){badge.textContent=data.active.length;badge.style.display='flex';}else badge.style.display='none';}}
 function renderNoteCard(n,isDone){var prioCls=n.priority==='Високо'?'prio-high':n.priority==='Ниско'?'prio-low':'prio-medium';var prioLabel=n.priority==='Високо'?'high':n.priority==='Ниско'?'low':'medium';var photoHtml=n.photo?'<img class="note-photo" src="'+esc(n.photo)+'" loading="lazy" onerror="this.style.display=\'none\'">':'';return '<div class="note-card '+(isDone?'done ':'')+prioCls+'"><button class="note-check '+(isDone?'checked':'')+'" onclick="toggleNote(\''+esc(n.id)+'\')">'+(isDone?'✓':'')+'</button><div class="note-body"><div class="note-text">'+esc(n.text)+'</div><div class="note-meta"><span class="note-date">'+esc(n.date)+'</span><span class="note-prio-badge '+prioLabel+'">'+esc(n.priority||'Средно')+'</span></div></div>'+photoHtml+'<button class="note-delete" onclick="deleteNoteConfirm(\''+esc(n.id)+'\')">🗑️</button></div>';}
@@ -2003,8 +1997,6 @@ function toggleNote(id){google.script.run.withSuccessHandler(function(r){if(r&&r
 function deleteNoteConfirm(id){if(confirm('Изтрий тази бележка?')){google.script.run.withSuccessHandler(function(r){if(r&&r.success){showToast('🗑️ Изтрито');loadNotes();loadDashboard();}else showToast('⚠️ '+(r.error||'Грешка'));}).withFailureHandler(function(e){showToast('⚠️ '+e.message);}).deleteNote(id);}}
 function switchNotesTab(tab){document.querySelectorAll('#sec-notes .tab').forEach(function(t){t.classList.remove('active');});document.querySelectorAll('#sec-notes .tab').forEach(function(t){if(t.getAttribute('data-tab')==='notes-'+tab)t.classList.add('active');});document.getElementById('notesActiveList').style.display=(tab==='active')?'flex':'none';document.getElementById('notesDoneList').style.display=(tab==='done')?'flex':'none';}
 
-function toggleVoiceInput(){if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){showToast('⚠️ Гласовият вход не се поддържа');return;}if(isRecording){stopVoice();return;}var SR=window.SpeechRecognition||window.webkitSpeechRecognition;voiceRecognition=new SR();voiceRecognition.lang='bg-BG';voiceRecognition.continuous=false;voiceRecognition.interimResults=true;var vb=document.getElementById('voiceBtn'),st=document.getElementById('voiceStatus'),inp=document.getElementById('quickNoteInput');voiceRecognition.onstart=function(){isRecording=true;if(vb)vb.classList.add('recording');if(st){st.style.display='block';st.textContent='🔴 Говори сега...';}};voiceRecognition.onresult=function(event){var tr='';for(var i=event.resultIndex;i<event.results.length;i++){tr+=event.results[i][0].transcript;}if(inp)inp.value=tr;};voiceRecognition.onerror=function(event){stopVoice();if(event.error==='no-speech')showToast('⚠️ Не чух нищо');else if(event.error==='not-allowed')showToast('⚠️ Разреши микрофона');else showToast('⚠️ '+event.error);};voiceRecognition.onend=function(){stopVoice();};voiceRecognition.start();}
-function stopVoice(){isRecording=false;if(voiceRecognition){try{voiceRecognition.stop();}catch(e){}}var vb=document.getElementById('voiceBtn');if(vb)vb.classList.remove('recording');var st=document.getElementById('voiceStatus');if(st)st.style.display='none';}
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&document.activeElement&&document.activeElement.id==='quickNoteInput'){e.preventDefault();quickAddNote();}});
 
 function closeModal(type){if(type==='form'){var m=document.getElementById('formModal');if(m)m.style.display='none';pendingPhotoData=null;bulkSelection={};bulkType=null;}}
