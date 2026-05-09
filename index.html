@@ -1053,7 +1053,6 @@ function tryAutoLogin() {
     });
   }
 }
-tryAutoLogin();
 
 // ================================================================
 // SHIM: google.script.run → callApi (JSONP)
@@ -2006,6 +2005,7 @@ var LANDING_URL = 'https://momorganizer.eu/memories';
 function shareApp(){showQRModal();}
 function showQRModal(){document.getElementById('qrModal').style.display='flex';document.getElementById('shareLinkInput').value=LANDING_URL;generateQR(LANDING_URL);}
 function copyShareLink(){var val=document.getElementById('shareLinkInput').value;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(val).then(function(){showToast('✅ Линкът е копиран!');}).catch(function(){showToast('⚠️ Копирай ръчно');});}else{var input=document.getElementById('shareLinkInput');input.select();try{document.execCommand('copy');showToast('✅ Копиран!');}catch(e){showToast('⚠️ Копирай ръчно');}}}
+tryAutoLogin();
 function generateQR(text){var canvas=document.getElementById('qrCanvas');if(!canvas)return;var size=200;canvas.width=size;canvas.height=size;var ctx=canvas.getContext('2d');ctx.fillStyle='#FDE8F0';ctx.fillRect(0,0,size,size);ctx.fillStyle='#8A6B6B';ctx.font='14px DM Sans,sans-serif';ctx.textAlign='center';ctx.fillText('Зареждам QR...',size/2,size/2);var img=new Image();img.crossOrigin='anonymous';img.onload=function(){ctx.clearRect(0,0,size,size);ctx.drawImage(img,0,0,size,size);};img.onerror=function(){ctx.fillStyle='#FDE8F0';ctx.fillRect(0,0,size,size);ctx.fillStyle='#3D2B2B';ctx.font='13px DM Sans,sans-serif';ctx.textAlign='center';ctx.fillText('Копирай линка отдолу',size/2,size/2-5);ctx.fillText('и го изпрати 💝',size/2,size/2+15);};img.src='https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&data='+encodeURIComponent(text)+'&format=png&margin=10';}
 </script>
 </body>
