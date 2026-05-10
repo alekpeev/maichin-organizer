@@ -1001,16 +1001,27 @@ function showLoginStatus(type, html) {
 // ================================================================
 function handleLogin(response) {
   currentToken = response.credential;
-  showLoginStatus('loading', '⏳ Свързваме се с твоите данни...');
+  showLoginStatus('loading', '⏳ Верифициране...');
 
   callApi('init', { country: navigator.language || '' }, currentToken)
     .then(function() {
       var payload = parseJwt(currentToken);
       localStorage.setItem('maichin_token', currentToken);
       localStorage.setItem('maichin_token_expiry', (payload.exp * 1000).toString());
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('splash').style.display = 'flex';
-      loadDashboard();
+      if (localStorage.getItem('maichin_ssId')) {
+        // Връщаща се потребителка — директно в приложението
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('splash').style.display = 'flex';
+        loadDashboard();
+      } else {
+        // Нова потребителка — нужен достъп до Google Drive
+        showLoginStatus('loading',
+          '✅ Влезе успешно!<br><br>' +
+          '<button onclick="connectDrive()" style="background:#D4688A;color:white;border:none;border-radius:14px;padding:14px 28px;font-size:1rem;cursor:pointer;font-family:DM Sans,sans-serif;font-weight:600;box-shadow:0 4px 12px rgba(212,104,138,0.3)">' +
+          '🔗 Свържи Google Drive</button>' +
+          '<br><small style="color:#8A6B6B;margin-top:12px;display:block;line-height:1.5">Нужно само веднъж — за да се създаде твоята лична таблица с данни в <strong>твоя</strong> Google Drive</small>'
+        );
+      }
     })
     .catch(function(err) {
       currentToken = null;
@@ -1018,10 +1029,20 @@ function handleLogin(response) {
     });
 }
 
+function connectDrive() {
+  showLoginStatus('loading', '⏳ Свързване с Google Drive...');
+  _initDataClient();
+  _dataTokenLoading = true;
+  _dataTokenClient.requestAccessToken({ prompt: '' });
+}
+
 function tryAutoLogin() {
   var savedToken = localStorage.getItem('maichin_token');
   if (!savedToken) return;
   currentToken = savedToken;
+  _ssId = localStorage.getItem('maichin_ssId') || null;
+  var meta = localStorage.getItem('maichin_sheetMeta');
+  if (meta) try { _sheetMeta = JSON.parse(meta); } catch(e) {}
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('splash').style.display = 'flex';
   loadDashboard();
@@ -1093,12 +1114,10 @@ var google = {
           var args = Array.prototype.slice.call(arguments);
           var action = _actionMap[prop] || prop;
           var data = _packArgs(prop, args);
-          callApi(action, data, currentToken)
+          _localDataApi(action, data)
             .then(function(result) { if (onSuccess) onSuccess(result); })
             .catch(function(err) {
-              if (err.message && err.message.indexOf('токен') !== -1) {
-                showToast('⚠️ Сесията изтече. Презареди страницата.');
-              } else if (onFailure) {
+              if (onFailure) {
                 onFailure({ message: err.message });
               } else {
                 showToast('⚠️ ' + err.message);
@@ -1127,27 +1146,68 @@ function requestPermissionsViaPopup() {
 // КАЧВАНЕ НА СНИМКИ ДИРЕКТНО В GOOGLE DRIVE (Drive API v3)
 // Заобикаля JSONP ограничението за размер на URL
 // ================================================================
-var _driveTokenClient = null;
+// Единен токен клиент за Sheets + Drive (v15)
 var _driveAccessToken = null;
 var _driveUploadQueue = null;
+var _dataToken = null;
+var _dataTokenClient = null;
+var _dataTokenQueue = [];
+var _dataTokenLoading = false;
+var _ssId = null;
+var _sheetMeta = {};
 
-var DRIVE_CLIENT_ID = '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com';
-
-function _initDriveClient(callback) {
-  if (_driveTokenClient) { callback(); return; }
-  _driveTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: DRIVE_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/drive.file',
+function _initDataClient() {
+  if (_dataTokenClient) return;
+  _dataTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: '488308267310-ibfdaokrhpcq0mh8q2gf3jjnjrhii3fe.apps.googleusercontent.com',
+    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
     callback: function(resp) {
+      _dataTokenLoading = false;
       if (resp.error) {
-        showToast('⚠️ Достъпът до Drive е отказан.');
-        _driveUploadQueue = null;
+        var q = _dataTokenQueue; _dataTokenQueue = [];
+        q.forEach(function(cb) { cb(null, resp.error); });
+        if (_driveUploadQueue) { showToast('⚠️ Достъпът е отказан.'); _driveUploadQueue = null; }
         return;
       }
+      _dataToken = resp.access_token;
       _driveAccessToken = resp.access_token;
+      var q = _dataTokenQueue; _dataTokenQueue = [];
+      q.forEach(function(cb) { cb(_dataToken); });
       if (_driveUploadQueue) { _driveUploadQueue(); _driveUploadQueue = null; }
+      // Ако сме в потока на connectDrive — създаваме таблицата
+      if (!localStorage.getItem('maichin_ssId')) {
+        _getOrCreateSpreadsheet()
+          .then(function() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('splash').style.display = 'flex';
+            loadDashboard();
+          })
+          .catch(function(err) {
+            showLoginStatus('error', '❌ ' + err.message);
+          });
+      }
     }
   });
+}
+
+function _withDataToken() {
+  return new Promise(function(resolve, reject) {
+    if (_dataToken) { resolve(_dataToken); return; }
+    _initDataClient();
+    _dataTokenQueue.push(function(token, err) {
+      if (err) reject(new Error('Достъпът е отказан: ' + err));
+      else resolve(token);
+    });
+    if (!_dataTokenLoading) {
+      _dataTokenLoading = true;
+      _dataTokenClient.requestAccessToken({ prompt: '' });
+    }
+  });
+}
+
+// Стара съвместимост за снимки
+function _initDriveClient(callback) {
+  _initDataClient();
   callback();
 }
 
@@ -1228,8 +1288,11 @@ function uploadDirectToDrive(base64Data, fileName, mimeType, onDone, subfolder) 
       .catch(function(err) {
         if (err.message.indexOf('401') !== -1 || err.message.indexOf('403') !== -1) {
           _driveAccessToken = null;
+          _dataToken = null;
           _driveUploadQueue = function() { doUpload(_driveAccessToken); };
-          _driveTokenClient.requestAccessToken({ prompt: 'consent' });
+          _initDataClient();
+          _dataTokenLoading = true;
+          _dataTokenClient.requestAccessToken({ prompt: 'consent' });
         } else {
           showToast('⚠️ Грешка при качване: ' + err.message);
           onDone({ success: false, error: err.message });
@@ -1238,15 +1301,17 @@ function uploadDirectToDrive(base64Data, fileName, mimeType, onDone, subfolder) 
     });
   }
 
-  _initDriveClient(function() {
-    if (_driveAccessToken) {
-      doUpload(_driveAccessToken);
-    } else {
-      showToast('🔐 Нужно разрешение за Google Drive...');
-      _driveUploadQueue = function() { doUpload(_driveAccessToken); };
-      _driveTokenClient.requestAccessToken({ prompt: '' });
+  _initDataClient();
+  if (_driveAccessToken) {
+    doUpload(_driveAccessToken);
+  } else {
+    showToast('🔐 Нужно разрешение за Google Drive...');
+    _driveUploadQueue = function() { doUpload(_driveAccessToken); };
+    if (!_dataTokenLoading) {
+      _dataTokenLoading = true;
+      _dataTokenClient.requestAccessToken({ prompt: '' });
     }
-  });
+  }
 }
 
 </script>
@@ -1978,6 +2043,659 @@ var LANDING_URL = 'https://momorganizer.eu/memories';
 function shareApp(){showQRModal();}
 function showQRModal(){document.getElementById('qrModal').style.display='flex';document.getElementById('shareLinkInput').value=LANDING_URL;generateQR(LANDING_URL);}
 function copyShareLink(){var val=document.getElementById('shareLinkInput').value;if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(val).then(function(){showToast('✅ Линкът е копиран!');}).catch(function(){showToast('⚠️ Копирай ръчно');});}else{var input=document.getElementById('shareLinkInput');input.select();try{document.execCommand('copy');showToast('✅ Копиран!');}catch(e){showToast('⚠️ Копирай ръчно');}}}
+// ================================================================
+// DATA LAYER v15 — GOOGLE SHEETS REST API
+// Всички данни са в Drive-а на потребителката.
+// Разработчикът НЯМА никакъв достъп.
+// ================================================================
+
+// --- Ваксинен и преглеждащ график (бивши GAS константи) ---
+var VS=[{month:0,name:'Хепатит Б (1-ва доза)',short:'Хеп Б 1'},{month:1,name:'Хепатит Б (2-ра доза)',short:'Хеп Б 2'},{month:2,name:'Хексаваксин (1-ва) + Пневмококова (1-ва)',short:'Хекса 1 + Пневмо 1'},{month:3,name:'Хексаваксин (2-ра доза)',short:'Хекса 2'},{month:4,name:'Хексаваксин (3-та) + Пневмококова (2-ра)',short:'Хекса 3 + Пневмо 2'},{month:7,name:'Хепатит Б (3-та доза)',short:'Хеп Б 3'},{month:11,name:'Пневмококова (бустер) + МПР (1-ва)',short:'Пневмо бустер + МПР 1'},{month:12,name:'Варицела (1-ва доза)',short:'Варицела 1'},{month:18,name:'Хексаваксин (бустер)',short:'Хекса бустер'},{month:24,name:'Хепатит А (1-ва доза)',short:'Хеп А 1'},{month:30,name:'Хепатит А (2-ра доза)',short:'Хеп А 2'},{month:72,name:'МПР (2-ра) + Варицела (2-ра)',short:'МПР 2 + Варицела 2'},{month:84,name:'Тетанус/Дифтерия/Коклюш (бустер)',short:'ТДК бустер'}];
+var CS=[{month:1,name:'Преглед на 1 месец'},{month:2,name:'Преглед на 2 месеца'},{month:3,name:'Преглед на 3 месеца'},{month:4,name:'Преглед на 4 месеца'},{month:5,name:'Преглед на 5 месеца'},{month:6,name:'Преглед на 6 месеца'},{month:7,name:'Преглед на 7 месеца'},{month:8,name:'Преглед на 8 месеца'},{month:9,name:'Преглед на 9 месеца'},{month:10,name:'Преглед на 10 месеца'},{month:11,name:'Преглед на 11 месеца'},{month:12,name:'Преглед на 12 месеца (1 година)'},{month:15,name:'Преглед на 15 месеца'},{month:18,name:'Преглед на 18 месеца (1.5 години)'},{month:24,name:'Преглед на 24 месеца (2 години)'},{month:36,name:'Преглед на 3 години'},{month:48,name:'Преглед на 4 години'},{month:60,name:'Преглед на 5 години'},{month:72,name:'Преглед на 6 години'},{month:84,name:'Преглед на 7 години'},{month:96,name:'Преглед на 8 години'},{month:108,name:'Преглед на 9 години'},{month:120,name:'Преглед на 10 години'}];
+var TS=[{id:'upper_right_1',name:'Горен десен централен резец',type:'central',monthMin:8,monthMax:12},{id:'upper_right_2',name:'Горен десен страничен резец',type:'lateral',monthMin:9,monthMax:13},{id:'upper_right_3',name:'Горен десен кучешки',type:'canine',monthMin:16,monthMax:22},{id:'upper_right_4',name:'Горен десен първи кътник',type:'molar1',monthMin:13,monthMax:19},{id:'upper_right_5',name:'Горен десен втори кътник',type:'molar2',monthMin:25,monthMax:33},{id:'upper_left_1',name:'Горен ляв централен резец',type:'central',monthMin:8,monthMax:12},{id:'upper_left_2',name:'Горен ляв страничен резец',type:'lateral',monthMin:9,monthMax:13},{id:'upper_left_3',name:'Горен ляв кучешки',type:'canine',monthMin:16,monthMax:22},{id:'upper_left_4',name:'Горен ляв първи кътник',type:'molar1',monthMin:13,monthMax:19},{id:'upper_left_5',name:'Горен ляв втори кътник',type:'molar2',monthMin:25,monthMax:33},{id:'lower_left_1',name:'Долен ляв централен резец',type:'central',monthMin:6,monthMax:10},{id:'lower_left_2',name:'Долен ляв страничен резец',type:'lateral',monthMin:10,monthMax:16},{id:'lower_left_3',name:'Долен ляв кучешки',type:'canine',monthMin:17,monthMax:23},{id:'lower_left_4',name:'Долен ляв първи кътник',type:'molar1',monthMin:14,monthMax:18},{id:'lower_left_5',name:'Долен ляв втори кътник',type:'molar2',monthMin:23,monthMax:31},{id:'lower_right_1',name:'Долен десен централен резец',type:'central',monthMin:6,monthMax:10},{id:'lower_right_2',name:'Долен десен страничен резец',type:'lateral',monthMin:10,monthMax:16},{id:'lower_right_3',name:'Долен десен кучешки',type:'canine',monthMin:17,monthMax:23},{id:'lower_right_4',name:'Долен десен първи кътник',type:'molar1',monthMin:14,monthMax:18},{id:'lower_right_5',name:'Долен десен втори кътник',type:'molar2',monthMin:23,monthMax:31}];
+
+// --- Конфигурация на таблицата ---
+var _SS_TITLE = 'Майчин Органайзър';
+var _SHEET_CFG = {
+  'Профил': null,
+  'Постижения': ['Дата','Категория','Събитие','Описание','Снимка (URL)'],
+  'Здраве': ['Ваксина','Планирана дата','Направена на','Лекар','Реакция','Следващ преглед','Бележки'],
+  'Растеж': ['Дата','Тегло (кг)','Ръст (см)','Обиколка глава (см)','Бележки'],
+  'Спомени': ['Дата','Заглавие','Описание','Категория','Снимка (URL)'],
+  'Хранене': ['Дата','Храна','Реакция','Алергия?','Бележки'],
+  'Лекари': ['Специалност','Д-р Име','Телефон','Адрес','Бележки'],
+  'Бележки': ['ID','Дата','Текст','Приоритет','Снимка (URL)','Готово','Дата готово'],
+  'Алергии': ['ID','Дата','Какво','Тип','Реакция','Степен','Лечение','Бележки','Източник'],
+  'Прегледи': ['Ime','Планирана дата','Направен на','Лекар','Бележки','Тип'],
+  'Боледуване': ['ID','Заболяване','Дата разболяване','Симптоми','Макс температура','Лечение','Лекар','Карантина до','Контролен преглед','Дата оздравяване','Бележки'],
+  'Зъби': ['ID зъб','Статус','Дата поникване','Дата събитие','Лекар','Бележки']
+};
+var _PROFILE_FIELDS = ['Ife на бебето','Дата на раждане','Час на раждане','Пол','Кръвна група','Тегло при раждане (кг)','Ръст при раждане (см)','Болница','Доктор при раждане','Педиатър ife','Педиатър телефон','Педиатър кабинет','Педиатър работно времa','Педиатър поликлиника','Педиатър втори телефон','Ife на майката','Ife на таткото','Снимка','Бележки'];
+
+// --- Помощни функции за дати ---
+function _d(s) {
+  // ISO "YYYY-MM-DD" → display "DD.MM.YYYY"
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) { var p=s.slice(0,10).split('-'); return p[2]+'.'+p[1]+'.'+p[0]; }
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) return s.slice(0,10);
+  return s;
+}
+function _iso(s) {
+  // Всякакъв формат → ISO "YYYY-MM-DD"
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) { var p=s.split('.'); return p[2]+'-'+p[1]+'-'+p[0]; }
+  try { var d=new Date(s); if (!isNaN(d)) return d.toISOString().slice(0,10); } catch(e) {}
+  return s;
+}
+function _dueDate(birthISO, months) {
+  var d = new Date(birthISO); d.setMonth(d.getMonth() + months); return d;
+}
+function _diffDays(d) { return Math.round((d - new Date()) / 86400000); }
+function _vacStatus(diff, done) { if (done) return 'done'; if (diff < 0) return 'overdue'; if (diff <= 30) return 'upcoming'; return 'future'; }
+
+// --- Sheets REST API helpers ---
+var _SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets/';
+
+function _sApi(method, url, body) {
+  return _withDataToken().then(function(tok) {
+    var opts = { method: method, headers: { 'Authorization': 'Bearer ' + tok } };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    return fetch(url, opts).then(function(r) {
+      if (r.status === 401) {
+        _dataToken = null;
+        return _withDataToken().then(function(tok2) {
+          opts.headers['Authorization'] = 'Bearer ' + tok2;
+          return fetch(url, opts).then(function(r2) { return r2.json(); });
+        });
+      }
+      return r.json();
+    });
+  });
+}
+
+function _sGet(range) {
+  return _sApi('GET', _SHEETS_BASE + _ssId + '/values/' + encodeURIComponent(range) + '?valueRenderOption=FORMATTED_VALUE');
+}
+
+function _sAppend(sheet, values) {
+  return _sApi('POST', _SHEETS_BASE + _ssId + '/values/' + encodeURIComponent(sheet+'!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { values: [values.map(function(v){ return v==null?'':String(v); })] });
+}
+
+function _sBatchUpdate(requests) {
+  return _sApi('POST', _SHEETS_BASE + _ssId + ':batchUpdate', { requests: requests });
+}
+
+function _sUpdateCell(range, value) {
+  return _sApi('PUT', _SHEETS_BASE + _ssId + '/values/' + encodeURIComponent(range) + '?valueInputOption=RAW', { values: [[value==null?'':String(value)]] });
+}
+
+function _sBatchUpdateValues(data) {
+  return _sApi('POST', _SHEETS_BASE + _ssId + '/values:batchUpdate?valueInputOption=RAW', { data: data });
+}
+
+function _sDeleteRow(sheetName, rowNum) {
+  var sid = _sheetMeta[sheetName];
+  if (sid === undefined) return Promise.reject(new Error('Непознат лист: ' + sheetName));
+  return _sBatchUpdate([{ deleteDimension: { range: { sheetId: sid, dimension: 'ROWS', startIndex: rowNum - 1, endIndex: rowNum } } }]);
+}
+
+function _sReadSheet(sheetName, cols) {
+  return _sGet(sheetName + '!A2:' + _colLet(cols) + '10000').then(function(resp) {
+    if (!resp.values) return [];
+    return resp.values.map(function(row, idx) {
+      while (row.length < cols) row.push('');
+      if (!row[0] && !row[1]) return null;
+      return { _row: idx + 2, _v: row };
+    }).filter(Boolean);
+  });
+}
+
+function _colLet(n) {
+  var s=''; while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);} return s;
+}
+
+// --- Инициализация на таблицата ---
+function _ensureReady() {
+  return _withDataToken().then(function() {
+    if (!_ssId) _ssId = localStorage.getItem('maichin_ssId');
+    if (!_ssId) return _createSpreadsheet();
+    if (!Object.keys(_sheetMeta).length) {
+      var m = localStorage.getItem('maichin_sheetMeta');
+      if (m) { try { _sheetMeta = JSON.parse(m); } catch(e) {} return; }
+      return _loadSheetMeta();
+    }
+  });
+}
+
+function _createSpreadsheet() {
+  var sheets = Object.keys(_SHEET_CFG).map(function(n){ return {properties:{title:n}}; });
+  return _sApi('POST', 'https://sheets.googleapis.com/v4/spreadsheets', {
+    properties: { title: _SS_TITLE },
+    sheets: sheets
+  }).then(function(ss) {
+    _ssId = ss.spreadsheetId;
+    localStorage.setItem('maichin_ssId', _ssId);
+    ss.sheets.forEach(function(s){ _sheetMeta[s.properties.title] = s.properties.sheetId; });
+    localStorage.setItem('maichin_sheetMeta', JSON.stringify(_sheetMeta));
+    return _setupHeaders();
+  });
+}
+
+function _getOrCreateSpreadsheet() {
+  return _ensureReady().then(function(){ return _ssId; });
+}
+
+function _loadSheetMeta() {
+  return _sApi('GET', _SHEETS_BASE + _ssId + '?includeGridData=false').then(function(ss) {
+    ss.sheets.forEach(function(s){ _sheetMeta[s.properties.title] = s.properties.sheetId; });
+    localStorage.setItem('maichin_sheetMeta', JSON.stringify(_sheetMeta));
+  });
+}
+
+function _setupHeaders() {
+  var reqs = [];
+  // Профил заглавие
+  reqs.push({ updateCells: { range: { sheetId: _sheetMeta['Профил'], startRowIndex:0, endRowIndex:1, startColumnIndex:0, endColumnIndex:2 }, rows:[{values:[{userEnteredValue:{stringValue:'Поле'}},{userEnteredValue:{stringValue:'Стойност'}}]}], fields:'userEnteredValue' } });
+  // Профил полета
+  reqs.push({ updateCells: { range: { sheetId: _sheetMeta['Профил'], startRowIndex:1, endRowIndex:1+_PROFILE_FIELDS.length, startColumnIndex:0, endColumnIndex:2 }, rows: _PROFILE_FIELDS.map(function(f){ return {values:[{userEnteredValue:{stringValue:f}},{userEnteredValue:{stringValue:''}}]}; }), fields:'userEnteredValue' } });
+  // Заглавия на останалите листове
+  Object.keys(_SHEET_CFG).forEach(function(name) {
+    var h = _SHEET_CFG[name]; if (!h) return;
+    var sid = _sheetMeta[name]; if (sid===undefined) return;
+    reqs.push({ updateCells: { range:{sheetId:sid,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:h.length}, rows:[{values:h.map(function(t){return {userEnteredValue:{stringValue:t}};})}], fields:'userEnteredValue' } });
+  });
+  return _sBatchUpdate(reqs);
+}
+
+// --- PROFILE ---
+function _getProfileLocal() {
+  return _ensureReady().then(function() {
+    return _sGet('Профил!A2:B200').then(function(r) {
+      var p = {};
+      if (r.values) r.values.forEach(function(row){ if (row[0]) p[row[0]] = row[1]||''; });
+      return p;
+    });
+  });
+}
+
+function _saveProfileLocal(data) {
+  return _ensureReady().then(function() {
+    return _sGet('Профил!A2:B200').then(function(r) {
+      var rows = r.values || [];
+      var updates = [];
+      rows.forEach(function(row, idx) {
+        if (row[0] && data[row[0]] !== undefined) {
+          updates.push({ range: 'Профил!B'+(idx+2), values: [[String(data[row[0]])]] });
+        }
+      });
+      if (!updates.length) return { success: true };
+      return _sBatchUpdateValues(updates).then(function(){ return { success: true }; });
+    });
+  });
+}
+
+// --- MILESTONES ---
+function _getMilestonesLocal() {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Постижения', 5).then(function(rows) {
+      return rows.map(function(r){ return {_rowIndex:r._row-2,date:_d(r._v[0]),category:r._v[1],event:r._v[2],description:r._v[3],photo:r._v[4]}; });
+    });
+  });
+}
+function _addMilestoneLocal(d) {
+  return _ensureReady().then(function(){ return _sAppend('Постижения',[_iso(d.date),d.category||'',d.event||'',d.description||'',d.photo||'']).then(function(){ return {success:true}; }); });
+}
+
+// --- HEALTH / VACCINES ---
+function _buildVaccineSchedule(birthISO, doneMap) {
+  return VS.map(function(v) {
+    var due = _dueDate(birthISO, v.month);
+    var diff = _diffDays(due);
+    var dueISO = due.toISOString().slice(0,10);
+    var s = { month:v.month, name:v.name, short:v.short, dueDate:_d(dueISO), dueDateISO:dueISO, dueDateMs:due.getTime(), diffDays:diff, status:_vacStatus(diff, doneMap[v.name]) };
+    if (doneMap[v.name]) { s.status='done'; s.doneDate=doneMap[v.name].done; s.doneDoctor=doneMap[v.name].doctor; s.doneReaction=doneMap[v.name].reaction; }
+    return s;
+  }).sort(function(a,b){ var o={'overdue':0,'upcoming':1,'future':2,'done':3}; var oa=o[a.status]??2,ob=o[b.status]??2; return oa!==ob?oa-ob:a.dueDateMs-b.dueDateMs; });
+}
+
+function _getHealthLocal() {
+  return _ensureReady().then(function() {
+    return Promise.all([_getProfileLocal(), _sReadSheet('Здраве', 7)]).then(function(res) {
+      var profile = res[0], recs = res[1];
+      var vaccines = recs.map(function(r){ return {_rowIndex:r._row-2,name:r._v[0],planned:_d(r._v[1]),done:_d(r._v[2]),doctor:r._v[3],reaction:r._v[4],nextCheckup:_d(r._v[5]),notes:r._v[6]}; });
+      var birthISO = _iso(profile['Дата на раждане']||'');
+      var doneMap = {};
+      vaccines.forEach(function(v){ if(v.done) doneMap[v.name]=v; });
+      var schedule = birthISO ? _buildVaccineSchedule(birthISO, doneMap) : [];
+      return { vaccines: vaccines, schedule: schedule };
+    });
+  });
+}
+
+function _markVaccineDoneLocal(d) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Здраве', 7).then(function(recs) {
+      var already = recs.some(function(r){ return r._v[0]===d.name && r._v[2]; });
+      if (already) return { success:false, error:'Тази ваксина вече е отбелязана.' };
+      return _sAppend('Здраве',[d.name||'',_iso(d.planned),_iso(d.done||today()),d.doctor||'',d.reaction||'',_iso(d.nextCheckup),d.notes||'']).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+function _updateVaccineRecordLocal(name, d) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Здраве', 7).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===name; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      var updates = [];
+      if (d.done!==undefined) updates.push({range:'Здраве!C'+row._row,values:[[_iso(d.done)]]});
+      if (d.doctor!==undefined) updates.push({range:'Здраве!D'+row._row,values:[[d.doctor||'']]});
+      if (d.reaction!==undefined) updates.push({range:'Здраве!E'+row._row,values:[[d.reaction||'']]});
+      if (d.notes!==undefined) updates.push({range:'Здраве!G'+row._row,values:[[d.notes||'']]});
+      return (updates.length ? _sBatchUpdateValues(updates) : Promise.resolve()).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+function _deleteVaccineByNameLocal(name) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Здраве', 1).then(function(recs) {
+      var targets = recs.filter(function(r){ return r._v[0]===name; });
+      if (!targets.length) return { success:false, error:'Не е намерено.' };
+      var reqs = targets.slice().reverse().map(function(r){ return { deleteDimension:{range:{sheetId:_sheetMeta['Здраве'],dimension:'ROWS',startIndex:r._row-1,endIndex:r._row}}}; });
+      return _sBatchUpdate(reqs).then(function(){ return {success:true,deleted:targets.length}; });
+    });
+  });
+}
+
+function _bulkMarkVaccinesDoneLocal(items) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Здраве', 1).then(function(recs) {
+      var doneMap = {};
+      recs.forEach(function(r){ if(r._v[0]) doneMap[r._v[0]]=true; });
+      var toAdd = [];
+      items.forEach(function(item){ if (!item||!item.name||doneMap[item.name]) return; toAdd.push([item.name,_iso(item.planned),_iso(item.done||today()),'','','','Отбелязана при активиране']); doneMap[item.name]=true; });
+      if (!toAdd.length) return { success:true, added:0, skipped:items.length };
+      var reqs = toAdd.map(function(row){ return { appendCells:{sheetId:_sheetMeta['Здраве'],rows:[{values:row.map(function(v){return {userEnteredValue:{stringValue:String(v)}};})}],fields:'userEnteredValue'}}; });
+      return _sBatchUpdate(reqs).then(function(){ return {success:true,added:toAdd.length,skipped:items.length-toAdd.length}; });
+    });
+  });
+}
+
+// --- CHECKUPS ---
+function _buildCheckupSchedule(birthISO, doneMap) {
+  return CS.map(function(c) {
+    var due = _dueDate(birthISO, c.month);
+    var diff = _diffDays(due);
+    var dueISO = due.toISOString().slice(0,10);
+    var s = { month:c.month, name:c.name, dueDate:_d(dueISO), dueDateISO:dueISO, dueDateMs:due.getTime(), diffDays:diff, status:_vacStatus(diff, doneMap[c.name]), type:'auto' };
+    if (doneMap[c.name]) { s.status='done'; s.doneDate=doneMap[c.name].done; s.doneDoctor=doneMap[c.name].doctor; }
+    return s;
+  }).sort(function(a,b){ var o={'overdue':0,'upcoming':1,'future':2,'done':3}; var oa=o[a.status]??2,ob=o[b.status]??2; return oa!==ob?oa-ob:(a.dueDateMs||0)-(b.dueDateMs||0); });
+}
+
+function _getCheckupsLocal() {
+  return _ensureReady().then(function() {
+    return Promise.all([_getProfileLocal(), _sReadSheet('Прегледи', 6)]).then(function(res) {
+      var profile = res[0], recs = res[1];
+      var checkups = recs.map(function(r){ return {_rowIndex:r._row-2,name:r._v[0],planned:_d(r._v[1]),done:_d(r._v[2]),doctor:r._v[3],notes:r._v[4],type:r._v[5]}; });
+      var birthISO = _iso(profile['Дата на раждане']||'');
+      var doneMap = {};
+      checkups.forEach(function(c){ if(c.done) doneMap[c.name]=c; });
+      var schedule = birthISO ? _buildCheckupSchedule(birthISO, doneMap) : [];
+      var manual = checkups.filter(function(c){ return c.type==='Ръчен'; });
+      manual.forEach(function(c){ schedule.push({name:c.name,dueDate:c.planned||'',dueDateMs:c.planned?parseBgDate(c.planned):0,status:c.done?'done':'upcoming',doneDate:c.done,doneDoctor:c.doctor,doneNotes:c.notes,type:'manual'}); });
+      return schedule;
+    });
+  });
+}
+
+function _markCheckupDoneLocal(d) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Прегледи', 3).then(function(recs) {
+      var already = recs.some(function(r){ return r._v[0]===d.name && r._v[2]; });
+      if (already) return { success:false, error:'Вече е отбелязан.' };
+      return _sAppend('Прегледи',[d.name||'',_iso(d.planned),_iso(d.done||today()),d.doctor||'',d.notes||'','Автоматичен']).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+function _addManualCheckupLocal(d) {
+  return _ensureReady().then(function(){ return _sAppend('Прегледи',[d.name||'',_iso(d.planned),d.done?_iso(d.done):'',d.doctor||'',d.notes||'','Ръчен']).then(function(){ return {success:true}; }); });
+}
+
+function _updateCheckupRecordLocal(name, d) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Прегледи', 5).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===name; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      var updates = [];
+      if (d.done!==undefined) updates.push({range:'Прегледи!C'+row._row,values:[[_iso(d.done)]]});
+      if (d.doctor!==undefined) updates.push({range:'Прегледи!D'+row._row,values:[[d.doctor||'']]});
+      if (d.notes!==undefined) updates.push({range:'Прегледи!E'+row._row,values:[[d.notes||'']]});
+      return (updates.length ? _sBatchUpdateValues(updates) : Promise.resolve()).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+function _deleteCheckupByNameLocal(name) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Прегледи', 1).then(function(recs) {
+      var targets = recs.filter(function(r){ return r._v[0]===name; });
+      if (!targets.length) return { success:false, error:'Не е намерено.' };
+      var reqs = targets.slice().reverse().map(function(r){ return {deleteDimension:{range:{sheetId:_sheetMeta['Прегледи'],dimension:'ROWS',startIndex:r._row-1,endIndex:r._row}}}; });
+      return _sBatchUpdate(reqs).then(function(){ return {success:true,deleted:targets.length}; });
+    });
+  });
+}
+
+function _bulkMarkCheckupsDoneLocal(items) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Прегледи', 3).then(function(recs) {
+      var doneMap = {};
+      recs.forEach(function(r){ if(r._v[0]&&r._v[2]) doneMap[r._v[0]]=true; });
+      var toAdd = [];
+      items.forEach(function(item){ if(!item||!item.name||doneMap[item.name]) return; toAdd.push([item.name,_iso(item.planned),_iso(item.done||today()),'','Отбелязан при активиране','Автоматичен']); doneMap[item.name]=true; });
+      if (!toAdd.length) return { success:true, added:0, skipped:items.length };
+      var reqs = toAdd.map(function(row){ return {appendCells:{sheetId:_sheetMeta['Прегледи'],rows:[{values:row.map(function(v){return {userEnteredValue:{stringValue:String(v)}};})}],fields:'userEnteredValue'}}; });
+      return _sBatchUpdate(reqs).then(function(){ return {success:true,added:toAdd.length,skipped:items.length-toAdd.length}; });
+    });
+  });
+}
+
+// --- ALLERGIES ---
+function _getAllergiesLocal() {
+  return _ensureReady().then(function() {
+    return Promise.all([_sReadSheet('Алергии',9), _sReadSheet('Хранене',5)]).then(function(res) {
+      var allergies = res[0].map(function(r){ return {_rowIndex:r._row-2,id:r._v[0],date:_d(r._v[1]),what:r._v[2],type:r._v[3],reaction:r._v[4],severity:r._v[5],treatment:r._v[6],notes:r._v[7],source:r._v[8]}; });
+      var feeding = res[1].filter(function(r){ return r._v[3]==='Да'; });
+      var existing = {};
+      allergies.forEach(function(a){ if(a.source==='Хранене') existing[a.what]=true; });
+      feeding.forEach(function(f){ if(!existing[f._v[1]]) allergies.push({id:'auto_'+f._v[1],date:_d(f._v[0]),what:f._v[1],type:'Хранителна',reaction:f._v[2]||'',severity:'',treatment:'',notes:f._v[4]||'',source:'Хранене',_auto:true}); });
+      return allergies;
+    });
+  });
+}
+function _addAllergyLocal(d) {
+  var id='al_'+Date.now();
+  return _ensureReady().then(function(){ return _sAppend('Алергии',[id,_iso(d.date||today()),d.what||'',d.type||'Друго',d.reaction||'',d.severity||'',d.treatment||'',d.notes||'','Ръчно']).then(function(){ return {success:true,id:id}; }); });
+}
+function _deleteAllergyLocal(id) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Алергии',1).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===id; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      return _sDeleteRow('Алергии', row._row).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+// --- ILLNESSES ---
+function _getIllnessesLocal() {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Боледуване',11).then(function(recs) {
+      var all = recs.map(function(r){ return {_rowIndex:r._row-2,id:r._v[0],illness:r._v[1],dateStart:_d(r._v[2]),symptoms:r._v[3],maxTemp:r._v[4],treatment:r._v[5],doctor:r._v[6],quarantineUntil:_d(r._v[7]),controlCheckup:_d(r._v[8]),dateEnd:_d(r._v[9]),notes:r._v[10]}; });
+      return { active: all.filter(function(i){return !i.dateEnd;}), past: all.filter(function(i){return i.dateEnd;}).reverse() };
+    });
+  });
+}
+function _addIllnessLocal(d) {
+  var id='ill_'+Date.now();
+  return _ensureReady().then(function(){ return _sAppend('Боледуване',[id,d.illness||'',_iso(d.dateStart||today()),d.symptoms||'',d.maxTemp||'',d.treatment||'',d.doctor||'',_iso(d.quarantineUntil),_iso(d.controlCheckup),_iso(d.dateEnd),d.notes||'']).then(function(){ return {success:true,id:id}; }); });
+}
+function _updateIllnessLocal(id, d) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Боледуване',11).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===id; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      var u=[];
+      var cols={dateEnd:['J',9],symptoms:['D',3],treatment:['F',5],notes:['K',10],quarantineUntil:['H',7],controlCheckup:['I',8]};
+      Object.keys(d).forEach(function(k){ if(cols[k]) { var v=k.includes('date')||k.includes('Until')||k.includes('Checkup')?_iso(d[k]):String(d[k]||''); u.push({range:'Боледуване!'+cols[k][0]+row._row,values:[[v]]}); } });
+      return (u.length?_sBatchUpdateValues(u):Promise.resolve()).then(function(){ return {success:true}; });
+    });
+  });
+}
+function _deleteIllnessLocal(id) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Боледуване',1).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===id; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      return _sDeleteRow('Боледуване', row._row).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+// --- TEETH ---
+function _getTeethLocal() {
+  return _ensureReady().then(function() {
+    return Promise.all([_getProfileLocal(), _sReadSheet('Зъби',6)]).then(function(res) {
+      var profile=res[0], recs=res[1];
+      var map={};
+      recs.forEach(function(r){ map[r._v[0]]={status:r._v[1],dateErupted:_d(r._v[2]),dateEvent:_d(r._v[3]),doctor:r._v[4],notes:r._v[5]}; });
+      var birthISO = _iso(profile['Дата на раждане']||'');
+      var ageMonths = 0;
+      if (birthISO) { var b=new Date(birthISO),now=new Date(); ageMonths=(now.getFullYear()-b.getFullYear())*12+(now.getMonth()-b.getMonth()); }
+      return TS.map(function(t) {
+        var saved=map[t.id];
+        var exp=ageMonths>=t.monthMin&&ageMonths<=t.monthMax?'expected_soon':ageMonths>t.monthMax?'expected_overdue':'not_erupted';
+        return {id:t.id,name:t.name,type:t.type,monthMin:t.monthMin,monthMax:t.monthMax,expectedStatus:exp,status:saved?saved.status:'not_erupted',dateErupted:saved?saved.dateErupted:'',dateEvent:saved?saved.dateEvent:'',doctor:saved?saved.doctor:'',notes:saved?saved.notes:''};
+      });
+    });
+  });
+}
+function _saveToothLocal(d) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Зъби',1).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===d.toothId; });
+      if (row) {
+        return _sBatchUpdateValues([
+          {range:'Зъби!B'+row._row,values:[[d.status||'']]},
+          {range:'Зъби!C'+row._row,values:[[_iso(d.dateErupted)]]},
+          {range:'Зъби!D'+row._row,values:[[_iso(d.dateEvent)]]},
+          {range:'Зъби!E'+row._row,values:[[d.doctor||'']]},
+          {range:'Зъби!F'+row._row,values:[[d.notes||'']]}
+        ]).then(function(){ return {success:true}; });
+      }
+      return _sAppend('Зъби',[d.toothId,d.status||'erupted',_iso(d.dateErupted),_iso(d.dateEvent),d.doctor||'',d.notes||'']).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+// --- GROWTH ---
+function _getGrowthLocal() {
+  return _ensureReady().then(function(){ return _sReadSheet('Растеж',5).then(function(recs){ return recs.map(function(r){return {_rowIndex:r._row-2,date:_d(r._v[0]),weight:r._v[1],height:r._v[2],head:r._v[3],notes:r._v[4]};}).reverse(); }); });
+}
+function _addGrowthEntryLocal(d) {
+  return _ensureReady().then(function(){ return _sAppend('Растеж',[_iso(d.date),d.weight||'',d.height||'',d.head||'',d.notes||'']).then(function(){ return {success:true}; }); });
+}
+
+// --- MEMORIES ---
+function _getMemoriesLocal() {
+  return _ensureReady().then(function(){ return _sReadSheet('Спомени',5).then(function(recs){ return recs.map(function(r){return {_rowIndex:r._row-2,date:_d(r._v[0]),title:r._v[1],description:r._v[2],category:r._v[3],photo:r._v[4]};}).reverse(); }); });
+}
+function _addMemoryLocal(d) {
+  return _ensureReady().then(function(){ return _sAppend('Спомени',[_iso(d.date),d.title||'',d.description||'',d.category||'',d.photo||'']).then(function(){ return {success:true}; }); });
+}
+
+// --- FEEDING ---
+function _getFeedingLocal() {
+  return _ensureReady().then(function(){ return _sReadSheet('Хранене',5).then(function(recs){ return recs.map(function(r){return {_rowIndex:r._row-2,date:_d(r._v[0]),food:r._v[1],reaction:r._v[2],allergy:r._v[3],notes:r._v[4]};} ); }); });
+}
+function _addFeedingEntryLocal(d) {
+  return _ensureReady().then(function(){ return _sAppend('Хранене',[_iso(d.date),d.food||'',d.reaction||'',d.allergy||'Не',d.notes||'']).then(function(){ return {success:true}; }); });
+}
+
+// --- DOCTORS ---
+function _getDoctorsLocal() {
+  return _ensureReady().then(function(){ return _sReadSheet('Лекари',5).then(function(recs){ return recs.map(function(r){return {_rowIndex:r._row-2,specialty:r._v[0],name:r._v[1],phone:r._v[2],address:r._v[3],notes:r._v[4]};} ); }); });
+}
+function _addDoctorLocal(d) {
+  return _ensureReady().then(function(){ return _sAppend('Лекари',[d.specialty||'',d.name||'',d.phone||'',d.address||'',d.notes||'']).then(function(){ return {success:true}; }); });
+}
+
+// --- NOTES ---
+function _getNotesLocal() {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Бележки',7).then(function(recs) {
+      var all = recs.map(function(r){ return {_rowIndex:r._row-2,id:r._v[0],date:_d(r._v[1]),text:r._v[2],priority:r._v[3],photo:r._v[4],done:r._v[5],doneDate:_d(r._v[6])}; });
+      var active=all.filter(function(n){return n.done!=='Да';});
+      var done=all.filter(function(n){return n.done==='Да';});
+      var po={'Високо':0,'Средно':1,'Ниско':2,'':3};
+      active.sort(function(a,b){return (po[a.priority]??3)-(po[b.priority]??3);});
+      return {active:active,done:done};
+    });
+  });
+}
+function _addNoteLocal(d) {
+  var id='n_'+Date.now();
+  return _ensureReady().then(function(){ return _sAppend('Бележки',[id,_iso(d.date||today()),d.text||'',d.priority||'Средно',d.photo||'','','']).then(function(){ return {success:true,id:id}; }); });
+}
+function _toggleNoteDoneLocal(id) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Бележки',7).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===id; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      var isDone = row._v[5]==='Да';
+      return _sBatchUpdateValues([
+        {range:'Бележки!F'+row._row,values:[[isDone?'':'Да']]},
+        {range:'Бележки!G'+row._row,values:[[isDone?'':_iso(today())]]}
+      ]).then(function(){ return {success:true}; });
+    });
+  });
+}
+function _deleteNoteLocal(id) {
+  return _ensureReady().then(function() {
+    return _sReadSheet('Бележки',1).then(function(recs) {
+      var row = recs.find(function(r){ return r._v[0]===id; });
+      if (!row) return { success:false, error:'Не е намерено.' };
+      return _sDeleteRow('Бележки', row._row).then(function(){ return {success:true}; });
+    });
+  });
+}
+
+// --- DELETE ENTRY ---
+function _deleteEntryLocal(sheetName, rowIndex) {
+  var rowNum = rowIndex + 2;
+  return _ensureReady().then(function(){ return _sDeleteRow(sheetName, rowNum).then(function(){ return {success:true}; }); });
+}
+
+// --- SPREADSHEET URL ---
+function _getSpreadsheetUrlLocal() {
+  return Promise.resolve({ ssId: _ssId, url: 'https://docs.google.com/spreadsheets/d/' + _ssId });
+}
+
+// --- DASHBOARD ---
+function _getDashboardLocal() {
+  return _ensureReady().then(function() {
+    return Promise.all([
+      _getProfileLocal(),
+      _sReadSheet('Постижения',5),
+      _sReadSheet('Здраве',7),
+      _sReadSheet('Спомени',5),
+      _sReadSheet('Растеж',5),
+      _getNotesLocal(),
+      _sReadSheet('Прегледи',6),
+      _sReadSheet('Боледуване',11)
+    ]).then(function(res) {
+      var profile=res[0], milestones=res[1], healthRecs=res[2], memoriesRaw=res[3], growthRaw=res[4], notes=res[5], checkupRecs=res[6], illRecs=res[7];
+      var birthISO = _iso(profile['Дата на раждане']||'');
+      var now = new Date();
+      var age = null;
+      if (birthISO) {
+        var b=new Date(birthISO);
+        var yr=now.getFullYear()-b.getFullYear(),mo=now.getMonth()-b.getMonth(),da=now.getDate()-b.getDate();
+        if(da<0){mo--;da+=new Date(now.getFullYear(),now.getMonth(),0).getDate();}
+        if(mo<0){yr--;mo+=12;}
+        age={years:yr,months:mo,days:da,totalDays:Math.floor((now-b)/86400000),totalMonths:yr*12+mo};
+      }
+      var doneVaccines={};
+      healthRecs.forEach(function(r){if(r._v[0]&&r._v[2])doneVaccines[r._v[0]]={done:_d(r._v[2]),doctor:r._v[3],reaction:r._v[4]};});
+      var vaccineSchedule = birthISO ? _buildVaccineSchedule(birthISO, doneVaccines) : [];
+      var doneCheckups={};
+      checkupRecs.forEach(function(r){if(r._v[0]&&r._v[2])doneCheckups[r._v[0]]={done:_d(r._v[2]),doctor:r._v[3]};});
+      var checkupSchedule = birthISO ? _buildCheckupSchedule(birthISO, doneCheckups) : [];
+      var activeIll = illRecs.filter(function(r){return !r._v[9];}).map(function(r){return {illness:r._v[1],quarantineUntil:_d(r._v[7]),controlCheckup:_d(r._v[8])};});
+      var memories = memoriesRaw.map(function(r){return {date:_d(r._v[0]),title:r._v[1],description:r._v[2],category:r._v[3],photo:r._v[4]};}).reverse();
+      var growth = growthRaw.map(function(r){return {date:_d(r._v[0]),weight:r._v[1],height:r._v[2],head:r._v[3],notes:r._v[4]};}).reverse();
+      var nowMs=now.getTime();
+      var upcoming=vaccineSchedule.filter(function(v){return v.status!=='done'&&v.dueDateMs>nowMs;});
+      var nextVaccine=null;
+      if(upcoming.length){upcoming.sort(function(a,b){return a.dueDateMs-b.dueDateMs;});nextVaccine={name:upcoming[0].short,fullName:upcoming[0].name,dueDate:upcoming[0].dueDate,status:upcoming[0].status};}
+      var upcomingEvents=[];
+      vaccineSchedule.forEach(function(v){if((v.status==='overdue'||v.status==='upcoming')&&v.dueDateMs)upcomingEvents.push({type:'vaccine',name:v.short||v.name,date:v.dueDate,status:v.status,dateMs:v.dueDateMs});});
+      checkupSchedule.forEach(function(c){if((c.status==='overdue'||c.status==='upcoming')&&c.dueDateMs)upcomingEvents.push({type:'checkup',name:c.name,date:c.dueDate,status:c.status,dateMs:c.dueDateMs});});
+      activeIll.forEach(function(ill){
+        if(ill.quarantineUntil)upcomingEvents.push({type:'quarantine',name:'Карантина: '+ill.illness,date:ill.quarantineUntil,status:'upcoming',dateMs:parseBgDate(ill.quarantineUntil)||0});
+        if(ill.controlCheckup)upcomingEvents.push({type:'control',name:'Контролен: '+ill.illness,date:ill.controlCheckup,status:'upcoming',dateMs:parseBgDate(ill.controlCheckup)||0});
+      });
+      upcomingEvents.sort(function(a,b){var sa=a.status==='overdue'?0:1,sb=b.status==='overdue'?0:1;return sa!==sb?sa-sb:(a.dateMs||0)-(b.dateMs||0);});
+      return {
+        profile:profile, age:age,
+        milestonesCount:milestones.length, memoriesCount:memories.length,
+        lastGrowth:growth.length?growth[0]:null,
+        nextVaccine:nextVaccine,
+        overdueVaccines:vaccineSchedule.filter(function(v){return v.status==='overdue';}).length,
+        activeNotes:notes.active?notes.active.slice(0,5):[],
+        activeNotesCount:notes.active?notes.active.length:0,
+        upcomingEvents:upcomingEvents.slice(0,8),
+        pediatricianPhone:profile['Педиатър телефон']||'',
+        pediatricianName:profile['Педиатър ife']||profile['Лекуващ педиатър']||'',
+        recentMemories:memories.slice(0,3),
+        recentMilestones:milestones.slice(-3).reverse().map(function(r){return {date:_d(r._v[0]),category:r._v[1],event:r._v[2]};})
+      };
+    });
+  });
+}
+
+// --- Централен диспечер ---
+function _localDataApi(action, data) {
+  var H = {
+    getProfile:           function(){ return _getProfileLocal(); },
+    saveProfile:          function(){ return _saveProfileLocal(data); },
+    getDashboard:         function(){ return _getDashboardLocal(); },
+    getMilestones:        function(){ return _getMilestonesLocal(); },
+    addMilestone:         function(){ return _addMilestoneLocal(data); },
+    getHealth:            function(){ return _getHealthLocal(); },
+    markVaccineDone:      function(){ return _markVaccineDoneLocal(data); },
+    updateVaccineRecord:  function(){ return _updateVaccineRecordLocal(data.name, data); },
+    deleteVaccineByName:  function(){ return _deleteVaccineByNameLocal(data.name); },
+    bulkMarkVaccinesDone: function(){ return _bulkMarkVaccinesDoneLocal(data.items); },
+    getAllergies:          function(){ return _getAllergiesLocal(); },
+    addAllergy:           function(){ return _addAllergyLocal(data); },
+    deleteAllergy:        function(){ return _deleteAllergyLocal(data.id); },
+    getCheckups:          function(){ return _getCheckupsLocal(); },
+    markCheckupDone:      function(){ return _markCheckupDoneLocal(data); },
+    addManualCheckup:     function(){ return _addManualCheckupLocal(data); },
+    updateCheckupRecord:  function(){ return _updateCheckupRecordLocal(data.name, data); },
+    deleteCheckupByName:  function(){ return _deleteCheckupByNameLocal(data.name); },
+    bulkMarkCheckupsDone: function(){ return _bulkMarkCheckupsDoneLocal(data.items); },
+    getIllnesses:         function(){ return _getIllnessesLocal(); },
+    addIllness:           function(){ return _addIllnessLocal(data); },
+    updateIllness:        function(){ return _updateIllnessLocal(data.id, data); },
+    deleteIllness:        function(){ return _deleteIllnessLocal(data.id); },
+    getTeeth:             function(){ return _getTeethLocal(); },
+    saveTooth:            function(){ return _saveToothLocal(data); },
+    getGrowth:            function(){ return _getGrowthLocal(); },
+    addGrowthEntry:       function(){ return _addGrowthEntryLocal(data); },
+    getMemories:          function(){ return _getMemoriesLocal(); },
+    addMemory:            function(){ return _addMemoryLocal(data); },
+    getFeeding:           function(){ return _getFeedingLocal(); },
+    addFeedingEntry:      function(){ return _addFeedingEntryLocal(data); },
+    getDoctors:           function(){ return _getDoctorsLocal(); },
+    addDoctor:            function(){ return _addDoctorLocal(data); },
+    getNotes:             function(){ return _getNotesLocal(); },
+    addNote:              function(){ return _addNoteLocal(data); },
+    toggleNoteDone:       function(){ return _toggleNoteDoneLocal(data.id); },
+    deleteNote:           function(){ return _deleteNoteLocal(data.id); },
+    deleteEntry:          function(){ return _deleteEntryLocal(data.sheetName, data.rowIndex); },
+    getSpreadsheetUrl:    function(){ return _getSpreadsheetUrlLocal(); }
+  };
+  var fn = H[action];
+  if (!fn) return Promise.reject(new Error('Непозната операция: ' + action));
+  return fn();
+}
+
 tryAutoLogin();
 function generateQR(text){var canvas=document.getElementById('qrCanvas');if(!canvas)return;var size=200;canvas.width=size;canvas.height=size;var ctx=canvas.getContext('2d');ctx.fillStyle='#FDE8F0';ctx.fillRect(0,0,size,size);ctx.fillStyle='#8A6B6B';ctx.font='14px DM Sans,sans-serif';ctx.textAlign='center';ctx.fillText('Зареждам QR...',size/2,size/2);var img=new Image();img.crossOrigin='anonymous';img.onload=function(){ctx.clearRect(0,0,size,size);ctx.drawImage(img,0,0,size,size);};img.onerror=function(){ctx.fillStyle='#FDE8F0';ctx.fillRect(0,0,size,size);ctx.fillStyle='#3D2B2B';ctx.font='13px DM Sans,sans-serif';ctx.textAlign='center';ctx.fillText('Копирай линка отдолу',size/2,size/2-5);ctx.fillText('и го изпрати 💝',size/2,size/2+15);};img.src='https://api.qrserver.com/v1/create-qr-code/?size='+size+'x'+size+'&data='+encodeURIComponent(text)+'&format=png&margin=10';}
 </script>
