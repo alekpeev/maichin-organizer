@@ -7,6 +7,30 @@
 
 ---
 
+# 🚨 ПРОЧЕТИ ПЪРВО — ЗАДЪЛЖИТЕЛНО ПРИ ВСЯКА НОВА СЕСИЯ
+
+**Стъпка 1 — Провери на кой branch си:**
+```
+git branch --show-current
+```
+
+**Стъпка 2 — Ако НЕ си на `claude/read-claude-docs-gHaua`, превключи:**
+```
+git fetch origin claude/read-claude-docs-gHaua
+git checkout claude/read-claude-docs-gHaua
+```
+
+**Стъпка 3 — Изтрий auto-created branch-а (ако е създаден):**
+```
+git branch -D <новият branch>
+git push origin --delete <новият branch>
+```
+
+**Стъпка 4 — Потвърди на потребителя:**
+"Готов. Работя на `claude/read-claude-docs-gHaua`. Последен commit: `91d9215`. Приложението работи. Следващата задача е: данните на майките да отиват в ТЕХНИЯ Google Drive."
+
+---
+
 # ⚠️ РАБОТЕЩА ВЕРСИЯ — НИКОГА НЕ ТРИЙ БЕЗ СЪГЛАСИЕ
 
 **Последен работещ Commit:** `91d9215` (9 май 2026)
